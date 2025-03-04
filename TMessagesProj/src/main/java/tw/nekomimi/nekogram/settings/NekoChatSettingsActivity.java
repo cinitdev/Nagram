@@ -385,39 +385,33 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
                         builder.setTitle(LocaleController.getString("maxRecentStickerCount", R.string.maxRecentStickerCount));
 
-                        LinearLayout linearLayout = new LinearLayout(getParentActivity());
-                        linearLayout.setOrientation(LinearLayout.VERTICAL);
-                        linearLayout.setPadding(AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24));
-                        
-                        // 添加文本显示当前值
+                        FrameLayout frameLayout2 = new FrameLayout(getParentActivity());
+                        frameLayout2.setPadding(AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24));
+
                         TextView valueText = new TextView(getParentActivity());
+                        valueText.setTextSize(16);
+                        valueText.setPadding(0, 0, AndroidUtilities.dp(39), 0);
+                        valueText.setGravity(Gravity.RIGHT);
                         valueText.setText(String.format(Locale.ENGLISH, "%d", NekoConfig.maxRecentStickerCount.Int()));
-                        valueText.setGravity(Gravity.CENTER);
-                        linearLayout.addView(valueText);
+                        frameLayout2.addView(valueText, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 0, 5, 0, 0));
 
                         SeekBarView seekBar = new SeekBarView(getParentActivity());
-                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                LinearLayout.LayoutParams.WRAP_CONTENT
-                        );
-                        params.topMargin = AndroidUtilities.dp(16);
-                        seekBar.setLayoutParams(params);
-                        seekBar.setProgress((float) (NekoConfig.maxRecentStickerCount.Int() - 200) / 3);
                         seekBar.setReportChanges(true);
-                        // 添加seekbar值变化监听
+                        seekBar.setProgress((float) (NekoConfig.maxRecentStickerCount.Int() - 200) / 3);
                         seekBar.setDelegate(new SeekBarView.SeekBarViewDelegate() {
                             @Override
                             public void onSeekBarDrag(boolean stop, float progress) {
                                 int value = (int) (200 + progress * 3);
                                 valueText.setText(String.format(Locale.ENGLISH, "%d", value));
                             }
+
                             @Override
                             public void onSeekBarPressed(boolean pressed) {
                             }
                         });
-                        linearLayout.addView(seekBar);
+                        frameLayout2.addView(seekBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, Gravity.LEFT | Gravity.TOP, 9, 44, 43, 11));
 
-                        builder.setView(linearLayout);
+                        builder.setView(frameLayout2);
                         builder.setPositiveButton(LocaleController.getString("OK", R.string.OK), (dialog, which) -> {
                             int value = (int) (200 + seekBar.getProgress() * 3);
                             NekoConfig.maxRecentStickerCount.setConfigInt(value);
