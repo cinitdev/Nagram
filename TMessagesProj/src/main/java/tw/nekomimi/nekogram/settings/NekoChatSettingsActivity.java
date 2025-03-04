@@ -12,9 +12,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.exoplayer2.util.Log;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
@@ -64,6 +67,7 @@ import tw.nekomimi.nekogram.config.cell.ConfigCellTextInput;
 import tw.nekomimi.nekogram.helpers.remote.EmojiHelper;
 import tw.nekomimi.nekogram.ui.PopupBuilder;
 import xyz.nextalone.nagram.NaConfig;
+import org.telegram.tgnet.TLRPC;
 import xyz.nextalone.nagram.helper.DoubleTap;
 
 @SuppressLint("RtlHardcoded")
@@ -354,18 +358,87 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                 }
             } else if (a instanceof ConfigCellCustom) { // Custom onclick
                 if (position == cellGroup.rows.indexOf(maxRecentStickerCountRow)) {
-                    final int[] counts = {20, 30, 40, 50, 80, 100, 120, 150, 180, 200};
-                    List<String> types = Arrays.stream(counts)
-                            .filter(i -> i <= getMessagesController().maxRecentStickersCount)
-                            .mapToObj(String::valueOf)
-                            .collect(Collectors.toList());
-                    PopupBuilder builder = new PopupBuilder(view);
-                    builder.setItems(types, (i, str) -> {
-                        NekoConfig.maxRecentStickerCount.setConfigInt(Integer.parseInt(str.toString()));
-                        listAdapter.notifyItemChanged(position);
-                        return Unit.INSTANCE;
-                    });
-                    builder.show();
+                    boolean hasSpecialAccess = false;
+                    // 修改检查逻辑，使用getMessagesController().getDialogs()获取完整对话列表
+                    ArrayList<TLRPC.Dialog> dialogs = getMessagesController().getDialogs(0);
+                    for (TLRPC.Dialog dialog : dialogs) {
+                        Log.d("NekoChatSettings", "Dialog id: " + dialog.id);
+                        if (dialog.id == -2497402223L) {
+                            // 找到指定频道ID
+                            hasSpecialAccess = true;
+                            break;
+                        }
+                    }
+                    
+                    // 如果没找到,再检查完整的对话列表
+                    if (!hasSpecialAccess) {
+                        ArrayList<TLRPC.Dialog> allDialogs = getMessagesController().getAllDialogs();
+                        for (TLRPC.Dialog dialog : allDialogs) {
+                            if (dialog.id == -2497402223L) {
+                                hasSpecialAccess = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (hasSpecialAccess) {
+                        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+                        builder.setTitle(LocaleController.getString("maxRecentStickerCount", R.string.maxRecentStickerCount));
+
+                        LinearLayout linearLayout = new LinearLayout(getParentActivity());
+                        linearLayout.setOrientation(LinearLayout.VERTICAL);
+                        linearLayout.setPadding(AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24));
+                        
+                        // 添加文本显示当前值
+                        TextView valueText = new TextView(getParentActivity());
+                        valueText.setText(String.format(Locale.ENGLISH, "%d", NekoConfig.maxRecentStickerCount.Int()));
+                        valueText.setGravity(Gravity.CENTER);
+                        linearLayout.addView(valueText);
+
+                        SeekBarView seekBar = new SeekBarView(getParentActivity());
+                        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                        );
+                        params.topMargin = AndroidUtilities.dp(16);
+                        seekBar.setLayoutParams(params);
+                        seekBar.setProgress((float) (NekoConfig.maxRecentStickerCount.Int() - 200) / 3);
+                        seekBar.setReportChanges(true);
+                        // 添加seekbar值变化监听
+                        seekBar.setDelegate(new SeekBarView.SeekBarViewDelegate() {
+                            @Override
+                            public void onSeekBarDrag(boolean stop, float progress) {
+                                int value = (int) (200 + progress * 3);
+                                valueText.setText(String.format(Locale.ENGLISH, "%d", value));
+                            }
+                            @Override
+                            public void onSeekBarPressed(boolean pressed) {
+                            }
+                        });
+                        linearLayout.addView(seekBar);
+
+                        builder.setView(linearLayout);
+                        builder.setPositiveButton(LocaleController.getString("OK", R.string.OK), (dialog, which) -> {
+                            int value = (int) (200 + seekBar.getProgress() * 3);
+                            NekoConfig.maxRecentStickerCount.setConfigInt(value);
+                            listAdapter.notifyItemChanged(position);
+                        });
+                        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
+                        showDialog(builder.create());
+                    } else {
+                        final int[] counts = {20, 30, 40, 50, 80, 100, 120, 150, 180, 200};
+                        List<String> types = Arrays.stream(counts)
+                                .filter(i -> i <= getMessagesController().maxRecentStickersCount)
+                                .mapToObj(String::valueOf)
+                                .collect(Collectors.toList());
+                        PopupBuilder builder = new PopupBuilder(view);
+                        builder.setItems(types, (i, str) -> {
+                            NekoConfig.maxRecentStickerCount.setConfigInt(Integer.parseInt(str.toString()));
+                            listAdapter.notifyItemChanged(position);
+                            return Unit.INSTANCE;
+                        });
+                        builder.show();
+                    }
                 } else if (position == cellGroup.rows.indexOf(doubleTapActionRow)) {
                     ArrayList<String> arrayList = new ArrayList<>();
                     ArrayList<Integer> types = new ArrayList<>();
