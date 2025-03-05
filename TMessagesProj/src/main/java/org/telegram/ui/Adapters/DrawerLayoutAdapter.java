@@ -12,6 +12,7 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
@@ -173,6 +174,10 @@ public class DrawerLayoutAdapter extends RecyclerListView.SelectionAdapter imple
                 break;
             case 5:
                 view = new DrawerAddCell(mContext);
+                view.setOnLongClickListener(v -> {
+                    Toast.makeText(mContext, "Long press detected", Toast.LENGTH_SHORT).show();
+                    return true;
+                });
                 break;
             case 1:
             default:
