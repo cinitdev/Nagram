@@ -430,9 +430,9 @@ public class DrawerLayoutAdapter extends RecyclerListView.SelectionAdapter imple
         Item item = items.get(position);
         if (item != null && item.listener != null) {
             item.listener.onClick(view);
-            return true;
+            //return true;
         }
-        return false;
+        return true;
     }
 
     public int getId(int position) {
