@@ -174,10 +174,6 @@ public class DrawerLayoutAdapter extends RecyclerListView.SelectionAdapter imple
                 break;
             case 5:
                 view = new DrawerAddCell(mContext);
-                view.setOnLongClickListener(v -> {
-                    Toast.makeText(mContext, "Long press detected", Toast.LENGTH_SHORT).show();
-                    return false;
-                });
                 break;
             case 1:
             default:
