@@ -577,7 +577,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         layoutParams.height = LayoutHelper.MATCH_PARENT;
         sideMenuContainer.setLayoutParams(layoutParams);
         sideMenu.setOnItemClickListener((view, position, x, y) -> {
-            Log.d("neko", "test:" + view + ", test2" + position);
+            Log.d("neko", "test:" + view.getClass().getSimpleName() + ", test2:" + position);
             if (drawerLayoutAdapter.click(view, position)) {
                 drawerLayoutContainer.closeDrawer(false);
                 return;
