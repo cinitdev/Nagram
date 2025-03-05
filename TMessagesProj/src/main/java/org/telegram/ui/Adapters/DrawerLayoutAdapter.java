@@ -176,7 +176,7 @@ public class DrawerLayoutAdapter extends RecyclerListView.SelectionAdapter imple
                 view = new DrawerAddCell(mContext);
                 view.setOnLongClickListener(v -> {
                     Toast.makeText(mContext, "Long press detected", Toast.LENGTH_SHORT).show();
-                    return true;
+                    return false;
                 });
                 break;
             case 1:
@@ -430,9 +430,9 @@ public class DrawerLayoutAdapter extends RecyclerListView.SelectionAdapter imple
         Item item = items.get(position);
         if (item != null && item.listener != null) {
             item.listener.onClick(view);
-            //return true;
+            return true;
         }
-        return true;
+        return false;
     }
 
     public int getId(int position) {
