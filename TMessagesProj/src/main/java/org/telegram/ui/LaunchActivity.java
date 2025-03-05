@@ -822,6 +822,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         });
         sideMenuTouchHelper.attachToRecyclerView(sideMenu);
         sideMenu.setOnItemLongClickListener((view, position) -> {
+            Log.d("neko", "test:" + view.getClass().getSimpleName() + ", test2:" + position);
             if (view instanceof DrawerUserCell) {
                 final int accountNumber = ((DrawerUserCell) view).getAccountNumber();
                 if (accountNumber == currentAccount || AndroidUtilities.isTablet()) {
