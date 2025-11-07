@@ -3,7 +3,8 @@ name: Debug build
 on:
   push:
     branches:
-      - bulid
+      - dev
+      - build
     paths-ignore:
       - '**.md'
       - '.github/**'
