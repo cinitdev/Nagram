@@ -9,7 +9,6 @@ apply plugin: "io.objectbox"
 def verName = APP_VERSION_NAME
 def verCode = 1222
 
-
 def officialVer = APP_VERSION_NAME
 def officialCode = APP_VERSION_CODE
 
