@@ -339,6 +339,7 @@ import tw.nekomimi.nekogram.utils.TelegramUtil;
 import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helper.DoubleTap;
 import xyz.nextalone.nagram.helper.MessageHelper;
+import xyz.nextalone.nagram.helper.SystemAiServiceHelper;
 
 @SuppressWarnings("unchecked")
 public class ChatActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate, DialogsActivity.DialogsActivityDelegate, LocationActivity.LocationActivityDelegate, ChatAttachAlertDocumentLayout.DocumentSelectActivityDelegate, ChatActivityInterface, FloatingDebugProvider, InstantCameraView.Delegate {
@@ -31952,6 +31953,21 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                     }
                 }
             }
+            if (selectedObject != null) {
+                ArrayList<Integer> needRemoveOptions = new ArrayList<>();
+                if (!NekoConfig.showShareMessages.Bool()) {
+                    needRemoveOptions.add(OPTION_SHARE);
+                }
+                for (int i = options.size() - 1; i >= 0; i--) {
+                    final int option = options.get(i);
+                    if (needRemoveOptions.contains(option)) {
+                        options.remove(i);
+                        items.remove(i);
+                        icons.remove(i);
+                        break;
+                    }
+                }
+            }
 
             if (suggestEdit) {
                 items.clear();
@@ -34239,11 +34255,13 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                     path = getFileLoader().getPathToMessage(selectedObject.messageOwner).toString();
                 }
                 Intent intent = new Intent(Intent.ACTION_SEND);
-                intent.setType(selectedObject.getDocument().mime_type);
+                intent.setType(selectedObject.getMimeType());
                 File f = new File(path);
                 if (Build.VERSION.SDK_INT >= 24) {
                     try {
-                        intent.putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(getParentActivity(), ApplicationLoader.getApplicationId() + ".provider", f));
+                        Uri uri = FileProvider.getUriForFile(getParentActivity(), ApplicationLoader.getApplicationId() + ".provider", f);
+                        intent.putExtra(Intent.EXTRA_STREAM, uri);
+                        intent.setClipData(ClipData.newRawUri(null, uri));
                         intent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                     } catch (Exception ignore) {
                         intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(f));
@@ -34990,6 +35008,16 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             case nkbtn_greatOrPoor: {
                 sendGreatOrGreat(true);
                 return 2;
+            }
+            case OPTION_SHARE: {
+                if (SystemAiServiceHelper.INSTANCE.isSystemAiAvailable(getContext()) && selectedObject != null && selectedObject.isPhoto()) {
+                    Uri uri = MessageHelper.INSTANCE.getUriToMessage(selectedObject);
+                    if (uri != null) {
+                        if (SystemAiServiceHelper.INSTANCE.startSystemAiService(getContext(), uri)) {
+                            return 2;
+                        }
+                    }
+                }
             }
         }
         return 0;
@@ -44629,8 +44657,10 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
             Intent intent = new Intent(Intent.ACTION_SEND);
             intent.setType("text/plain");
             intent.putExtra(Intent.EXTRA_TEXT,builder.toString());
+            Intent chooserIntent = Intent.createChooser(intent, LocaleController.getString(R.string.ShareFile));
+            chooserIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
-                getParentActivity().startActivity(intent);
+                getParentActivity().startActivity(chooserIntent);
             } catch (Exception e) {
                 AlertUtil.showToast(e);
             }
@@ -44778,8 +44808,10 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                 intent.setType("text/plain");
                 String body = messageObject.messageOwner.message;
                 intent.putExtra(Intent.EXTRA_TEXT,body);
+                Intent chooserIntent = Intent.createChooser(intent, LocaleController.getString(R.string.ShareFile));
+                chooserIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 try {
-                    getParentActivity().startActivity(intent);
+                    getParentActivity().startActivity(chooserIntent);
                 } catch (Exception e) {
                     AlertUtil.showToast(e);
                 }
@@ -46805,6 +46837,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                                     options.add(OPTION_COPY_PHOTO_AS_STICKER);
                                     icons.add(R.drawable.msg_copy);
                                 }
+                                items.add(LocaleController.getString(R.string.ShareFile));
+                                options.add(OPTION_SHARE);
+                                icons.add(R.drawable.msg_shareout);
                             }
                         }
                     }
@@ -47196,6 +47231,9 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                             options.add(OPTION_COPY_PHOTO_AS_STICKER);
                             icons.add(R.drawable.msg_copy);
                         }
+                        items.add(LocaleController.getString(R.string.ShareFile));
+                        options.add(OPTION_SHARE);
+                        icons.add(R.drawable.msg_shareout);
                     }
                 } else if (type == 5) {
                     items.add(LocaleController.getString(R.string.ApplyLocalizationFile));
