@@ -81,6 +81,7 @@ interface Translator {
         const val providerDeepL = 7
         const val providerTelegram = 8
         const val providerTranSmart = 9
+        const val providerLLM = 10
 
         @Throws(Exception::class)
         suspend fun translate(to: Locale, query: String): String {
@@ -96,7 +97,7 @@ interface Translator {
                 providerYouDao -> if (language == "zh") {
                     language = "zh-CHS"
                 }
-                providerDeepL -> language = language.uppercase()
+                providerDeepL -> language = DeepLXTranslator.convertLanguageCode(language, country)
                 providerMicrosoft,
                 providerGoogle,
                 providerGoogleCN -> if (language == "zh") {
@@ -116,9 +117,10 @@ interface Translator {
                 providerLingo -> LingoTranslator
                 providerMicrosoft -> MicrosoftTranslator
                 providerYouDao -> YouDaoTranslator
-                providerDeepL -> DeepLTranslator
+                providerDeepL -> DeepLXTranslator
                 providerTelegram -> TelegramAPITranslator
                 providerTranSmart -> TranSmartTranslator
+                providerLLM -> LLMTranslator
                 else -> throw IllegalArgumentException()
             }
 

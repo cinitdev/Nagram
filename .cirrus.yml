@@ -1,10 +1,10 @@
 container:
   image: teampgm/android-ndk:34-jdk17.0.10_7-ndk21.4.7075529-cmake3.18.1-ci
-  cpu: 4
-  memory: 12G
+  cpu: 8
+  memory: 16G
 
 release_build_task:
-  skip: "changesInclude('.gitea/**', '.github/**', '**.md')"
+  skip: "changesInclude('.github/**', '**.md')"
   checkout_script:
     - cat /proc/cpuinfo
     - git submodule init TMessagesProj/jni/libvpx TMessagesProj/jni/ffmpeg TMessagesProj/jni/boringssl
@@ -39,7 +39,7 @@ release_build_task:
   native_cache:
     folder: TMessagesProj/src/main/libs
     fingerprint_script:
-      - cat TMessagesProj/jni/CMakeLists.txt
+      - cat TMessagesProj/jni/** || true
       - git submodule status TMessagesProj/jni/ffmpeg
       - git submodule status TMessagesProj/jni/boringssl
     populate_script:

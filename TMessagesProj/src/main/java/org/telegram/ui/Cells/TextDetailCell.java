@@ -13,6 +13,7 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.util.TypedValue;
@@ -30,12 +31,17 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.LinkSpanDrawable;
+import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.Components.UItem;
+import org.telegram.ui.Components.UniversalAdapter;
+import org.telegram.ui.Components.UniversalRecyclerView;
+import org.telegram.ui.Components.spoilers.SpoilersTextView;
 
 import tw.nekomimi.nekogram.NekoConfig;
 
 public class TextDetailCell extends FrameLayout {
 
-    public final LinkSpanDrawable.LinksTextView textView;
+    public final SpoilersTextView textView;
     public final LinkSpanDrawable.LinksTextView valueTextView;
     public final LinkSpanDrawable.LinksTextView rightValueTextView;
     private final TextView showMoreTextView = null;
@@ -55,21 +61,15 @@ public class TextDetailCell extends FrameLayout {
     }
 
     public TextDetailCell(Context context, Theme.ResourcesProvider resourcesProvider, boolean textMultiline, boolean valueMultiline) {
+        this(context, 23, resourcesProvider, textMultiline, valueMultiline);
+    }
+
+    public TextDetailCell(Context context, int horizPadding, Theme.ResourcesProvider resourcesProvider, boolean textMultiline, boolean valueMultiline) {
         super(context);
         this.resourcesProvider = resourcesProvider;
         this.multiline = textMultiline || valueMultiline;
 
-        textView = new LinkSpanDrawable.LinksTextView(context, resourcesProvider) {
-            @Override
-            protected int processColor(int color) {
-                return TextDetailCell.this.processColor(color);
-            }
-
-            @Override
-            public int overrideColor() {
-                return processColor(super.overrideColor());
-            }
-        };
+        textView = new SpoilersTextView(context, resourcesProvider);
         textView.setOnLinkLongPressListener(span -> {
             if (span != null) {
                 try {
@@ -91,7 +91,7 @@ public class TextDetailCell extends FrameLayout {
         textView.setEllipsize(TextUtils.TruncateAt.END);
         textView.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
         textView.setPadding(dp(6), dp(2), dp(6), dp(5));
-        addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, 23 - 6, 8 - 2, 23 - 6, textMultiline ? 27 : 0));
+        addView(textView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, horizPadding - 6, 8 - 2, horizPadding - 6, textMultiline ? 27 : 0));
 
         valueTextView = new LinkSpanDrawable.LinksTextView(context, resourcesProvider) {
             @Override
@@ -124,9 +124,9 @@ public class TextDetailCell extends FrameLayout {
         valueTextView.setEllipsize(TextUtils.TruncateAt.END);
         valueTextView.setPadding(0, dp(1), 0, dp(6));
         if (textMultiline) {
-            addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT), 23, 33 - 1, 23, 10 - 6));
+            addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT), horizPadding, 33 - 1, horizPadding, 10 - 6));
         } else {
-            addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, 23, 33 - 1, 23, 10 - 6));
+            addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, horizPadding, 33 - 1, horizPadding, 10 - 6));
         }
 
         rightValueTextView = new LinkSpanDrawable.LinksTextView(context, resourcesProvider) {
@@ -159,9 +159,9 @@ public class TextDetailCell extends FrameLayout {
         rightValueTextView.setEllipsize(TextUtils.TruncateAt.END);
         rightValueTextView.setPadding(0, dp(1), 0, dp(6));
         if (textMultiline) {
-            addView(rightValueTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT), 23, 33 - 1, 23, 10 - 6));
+            addView(rightValueTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT), horizPadding, 33 - 1, horizPadding, 10 - 6));
         } else {
-            addView(rightValueTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, 23, 33 - 1, 23, 10 - 6));
+            addView(rightValueTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, horizPadding, 33 - 1, horizPadding, 10 - 6));
         }
 
         updateColors();
@@ -273,12 +273,14 @@ public class TextDetailCell extends FrameLayout {
     @Override
     protected void onDraw(Canvas canvas) {
         if (needDivider) {
+            Paint paint = resourcesProvider != null ? resourcesProvider.getPaint(Theme.key_paint_divider) : Theme.dividerPaint;
+            if (paint == null) paint = Theme.dividerPaint;
             canvas.drawLine(
                 LocaleController.isRTL ? 0 : dp(20),
                 getMeasuredHeight() - 1,
                 getMeasuredWidth() - (LocaleController.isRTL ? dp(20) : 0),
                 getMeasuredHeight() - 1,
-                Theme.dividerPaint
+                paint
             );
         }
     }
@@ -301,5 +303,28 @@ public class TextDetailCell extends FrameLayout {
         valueTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider));
         rightValueTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2, resourcesProvider));
         valueTextView.invalidate();
+    }
+
+    public static final class Factory extends UItem.UItemFactory<TextDetailCell> {
+        static { setup(new Factory()); }
+
+        @Override
+        public TextDetailCell createView(Context context, RecyclerListView listView, int currentAccount, int classGuid, Theme.ResourcesProvider resourcesProvider) {
+            return new TextDetailCell(context, 18, resourcesProvider, false, false);
+        }
+
+        @Override
+        public void bindView(View view, UItem item, boolean divider, UniversalAdapter adapter, UniversalRecyclerView listView) {
+            view.setId(item.id);
+            ((TextDetailCell) view).setTextAndValue(item.text, item.subtext, divider);
+        }
+
+        public static UItem of(int id, CharSequence title, CharSequence value) {
+            final UItem item = UItem.ofFactory(Factory.class);
+            item.id = id;
+            item.text = title;
+            item.subtext = value;
+            return item;
+        }
     }
 }

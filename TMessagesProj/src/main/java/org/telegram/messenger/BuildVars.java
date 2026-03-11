@@ -39,6 +39,9 @@ public class BuildVars {
     public static int TGX_APP_ID = 21724;
     public static String TGX_APP_HASH = "3e0cb5efcd52300aec5994fdfc5bdc16";
 
+    // works only on official app ids, disable on your forks
+    public static boolean SUPPORTS_PASSKEYS = true;
+
     static {
 
         try {

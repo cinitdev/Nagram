@@ -322,6 +322,10 @@ public class ConnectionsManager extends BaseController {
         return native_getCurrentDatacenterId(currentAccount);
     }
 
+    public long getCurrentAuthKeyId() {
+        return native_getCurrentAuthKeyId(currentAccount);
+    }
+
     public int getTimeDifference() {
         return native_getTimeDifference(currentAccount);
     }
@@ -402,18 +406,22 @@ public class ConnectionsManager extends BaseController {
     public <T extends TLObject> int sendRequestTyped(TLMethod<T> method, Utilities.Callback2<T, TLRPC.TL_error> completionBlock) {
         return sendRequestTyped(method, null, completionBlock);
     }
-
     public <T extends TLObject> int sendRequestTyped(TLMethod<T> method, Executor executor, Utilities.Callback2<T, TLRPC.TL_error> completionBlock) {
+        return sendRequestTyped(method, executor, completionBlock, DEFAULT_DATACENTER_ID, 0);
+    }
+    public <T extends TLObject> int sendRequestTyped(TLMethod<T> method, Executor executor, Utilities.Callback2<T, TLRPC.TL_error> completionBlock, int requestFlags) {
+        return sendRequestTyped(method, executor, completionBlock, DEFAULT_DATACENTER_ID, requestFlags);
+    }
+    public <T extends TLObject> int sendRequestTyped(TLMethod<T> method, Executor executor, Utilities.Callback2<T, TLRPC.TL_error> completionBlock, int dcId, int requestFlags) {
         return sendRequest(method, (res, err) -> {
             //noinspection unchecked
             T result = (T) res;
-
             if (executor != null) {
                 executor.execute(() -> completionBlock.run(result, err));
             } else {
                 completionBlock.run(result, err);
             }
-        });
+        }, null, null, null, requestFlags, dcId, ConnectionTypeGeneric, true);
     }
 
     public int sendRequest(TLObject object, RequestDelegate completionBlock) {
@@ -490,6 +498,7 @@ public class ConnectionsManager extends BaseController {
                     int responseSize = 0;
                     if (response != 0) {
                         NativeByteBuffer buff = NativeByteBuffer.wrap(response);
+                        buff.setDataSourceType(TLDataSourceType.NETWORK);
                         buff.reused = true;
                         responseSize = buff.limit();
                         int magic = buff.readInt32(true);
@@ -803,6 +812,10 @@ public class ConnectionsManager extends BaseController {
         native_updateDcSettings(currentAccount);
     }
 
+    public void setDefaultDatacenterId(int dcId) {
+        native_moveDatacenter(currentAccount, dcId);
+    }
+
     public long getPauseTime() {
         return lastPauseTime;
     }
@@ -867,6 +880,7 @@ public class ConnectionsManager extends BaseController {
     public static void onUnparsedMessageReceived(long address, final int currentAccount, long messageId) {
         try {
             NativeByteBuffer buff = NativeByteBuffer.wrap(address);
+            buff.setDataSourceType(TLDataSourceType.NETWORK);
             buff.reused = true;
             int constructor = buff.readInt32(true);
             final TLObject message = TLClassStore.Instance().TLdeserialize(buff, constructor, true);
@@ -940,6 +954,9 @@ public class ConnectionsManager extends BaseController {
     }
 
     public static void onRequestNewServerIpAndPort(final int second, final int currentAccount) {
+        if (NaConfig.INSTANCE.getDisableSecondAddress().Bool()) {
+            return;
+        }
         Utilities.globalQueue.postRunnable(() -> {
             boolean networkOnline = ApplicationLoader.isNetworkOnline();
             Utilities.stageQueue.postRunnable(() -> {
@@ -1084,7 +1101,7 @@ public class ConnectionsManager extends BaseController {
     public static native void native_setIpStrategy(int currentAccount, byte value);
 
     public static native void native_updateDcSettings(int currentAccount);
-
+    public static native void native_moveDatacenter(int currentAccount, int datacenterId);
     public static native void native_setNetworkAvailable(int currentAccount, boolean value, int networkType, boolean slow);
 
     public static native void native_resumeNetwork(int currentAccount, boolean partial);
@@ -1096,7 +1113,7 @@ public class ConnectionsManager extends BaseController {
     public static native int native_getCurrentPingTime(int currentAccount);
 
     public static native int native_getCurrentDatacenterId(int currentAccount);
-
+    public static native long native_getCurrentAuthKeyId(int currentAccount);
     public static native int native_getTimeDifference(int currentAccount);
 
     public static native void native_sendRequest(int currentAccount, long object, int flags, int datacenterId, int connectionType, boolean immediate, int requestToken);
@@ -1110,8 +1127,6 @@ public class ConnectionsManager extends BaseController {
     public static native void native_bindRequestToGuid(int currentAccount, int requestToken, int guid);
 
     public static native void native_applyDatacenterAddress(int currentAccount, int datacenterId, String ipAddress, int port);
-
-    public static native void native_moveToDatacenter(int currentAccount, int datacenterId);
 
     public static native int native_getConnectionState(int currentAccount);
     public static native void native_setUserId(int currentAccount, long id);
@@ -1142,6 +1157,17 @@ public class ConnectionsManager extends BaseController {
     public static native void native_receivedCaptchaResult(int currentAccount, int[] requestTokens, String token);
     public static native boolean native_isGoodPrime(byte[] prime, int g);
 
+
+    public static boolean testNativeTlScheme(NativeByteBuffer buffer, INativeTlTest test) {
+        return test.test(buffer.address);
+    }
+
+    public static native boolean native_test_AuthAuthorization(long object);
+    public interface INativeTlTest {
+        boolean test(long address);
+    }
+
+
     public static int generateClassGuid() {
         return lastClassGuid++;
     }
@@ -1165,7 +1191,7 @@ public class ConnectionsManager extends BaseController {
         });
     }
 
-    private static byte ipStrategy = -1;
+    public static byte ipStrategy = -1;
     public static boolean hasIpv4;
     public static boolean hasStrangeIpv4;
     public static boolean hasIpv6;
@@ -1177,6 +1203,10 @@ public class ConnectionsManager extends BaseController {
         }
         if (ipStrategy != -1) return ipStrategy;
 
+        if (NaConfig.INSTANCE.getCustomIpStrategy().Int() != 0) {
+            return ipStrategy = (byte) (NaConfig.INSTANCE.getCustomIpStrategy().Int() - 1);
+        }
+
         if (BuildVars.LOGS_ENABLED) {
             try {
                 NetworkInterface networkInterface;
@@ -1186,12 +1216,21 @@ public class ConnectionsManager extends BaseController {
                     if (!networkInterface.isUp() || networkInterface.isLoopback() || networkInterface.getInterfaceAddresses().isEmpty()) {
                         continue;
                     }
+                    if (BuildVars.LOGS_ENABLED) {
+                        FileLog.d("valid interface: " + networkInterface);
+                    }
                     List<InterfaceAddress> interfaceAddresses = networkInterface.getInterfaceAddresses();
                     for (int a = 0; a < interfaceAddresses.size(); a++) {
                         InterfaceAddress address = interfaceAddresses.get(a);
                         InetAddress inetAddress = address.getAddress();
+                        if (BuildVars.LOGS_ENABLED) {
+                            FileLog.d("address: " + inetAddress.getHostAddress());
+                        }
                         if (inetAddress.isLinkLocalAddress() || inetAddress.isLoopbackAddress() || inetAddress.isMulticastAddress()) {
                             continue;
+                        }
+                        if (BuildVars.LOGS_ENABLED) {
+                            FileLog.d("address is good");
                         }
                     }
                 }
@@ -1232,9 +1271,6 @@ public class ConnectionsManager extends BaseController {
                 }
                 if (!hasIpv4) {
                     ipStrategy = USE_IPV6_ONLY;
-                }
-                if (NekoConfig.useIPv6.Bool()) {
-                    ipStrategy = USE_IPV4_IPV6_RANDOM;
                 }
                 return ipStrategy;
             }

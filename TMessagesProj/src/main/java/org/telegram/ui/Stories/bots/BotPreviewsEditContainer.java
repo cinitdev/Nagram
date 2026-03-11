@@ -617,7 +617,7 @@ public class BotPreviewsEditContainer extends FrameLayout implements Notificatio
         }
         chatAttachAlert.setDelegate(new ChatAttachAlert.ChatAttachViewDelegate() {
             @Override
-            public void didPressedButton(int button, boolean arg, boolean notify, int scheduleDate, long effectId, boolean invertMedia, boolean forceDocument, long payStars) {
+            public void didPressedButton(int button, boolean arg, boolean notify, int scheduleDate, int scheduleRepeatPeriod, long effectId, boolean invertMedia, boolean forceDocument, long payStars) {
                 if (!chatAttachAlert.getPhotoLayout().getSelectedPhotos().isEmpty()) {
                     HashMap<Object, Object> selectedPhotos = chatAttachAlert.getPhotoLayout().getSelectedPhotos();
                     ArrayList<Object> selectedPhotosOrder = chatAttachAlert.getPhotoLayout().getSelectedPhotosOrder();
@@ -1975,7 +1975,7 @@ public class BotPreviewsEditContainer extends FrameLayout implements Notificatio
             public static class Factory extends UItem.UItemFactory<LanguageView> {
                 static { setup(new Factory()); }
                 @Override
-                public LanguageView createView(Context context, int currentAccount, int classGuid, Theme.ResourcesProvider resourcesProvider) {
+                public LanguageView createView(Context context, RecyclerListView listView, int currentAccount, int classGuid, Theme.ResourcesProvider resourcesProvider) {
                     return new LanguageView(context);
                 }
                 @Override

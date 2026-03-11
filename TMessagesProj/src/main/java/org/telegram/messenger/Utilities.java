@@ -632,4 +632,16 @@ public class Utilities {
         list.set(index2, temp);
     }
 
+    public static long tryParseLong(String str, long defaultValue) {
+        try {
+            return Long.parseLong(str);
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    public static int divCeil(int a, int b) {
+        return (a + b - 1) / b;
+    }
+
 }

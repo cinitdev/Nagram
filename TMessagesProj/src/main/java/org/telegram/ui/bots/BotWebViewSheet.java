@@ -1,6 +1,5 @@
 package org.telegram.ui.bots;
 
-import static org.telegram.messenger.AndroidUtilities.distanceInfluenceForSnapDuration;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 import static org.telegram.ui.Components.Bulletin.DURATION_PROLONG;
@@ -16,7 +15,6 @@ import android.content.ContextWrapper;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.ColorFilter;
-import android.graphics.Insets;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
@@ -30,9 +28,7 @@ import android.os.Bundle;
 import android.text.SpannableStringBuilder;
 import android.text.TextPaint;
 import android.text.TextUtils;
-import android.util.Log;
 import android.util.Pair;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -50,15 +46,9 @@ import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
 import androidx.core.math.MathUtils;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsAnimationCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
-
-import com.google.android.exoplayer2.offline.Download;
-import com.google.android.gms.vision.Frame;
 
 import org.json.JSONObject;
 import org.telegram.messenger.AndroidUtilities;
@@ -98,7 +88,6 @@ import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ArticleViewer;
 import org.telegram.ui.ChatActivity;
-import org.telegram.ui.Components.AnchorSpan;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CubicBezierInterpolator;
@@ -108,7 +97,6 @@ import org.telegram.ui.Components.OverlayActionBarLayoutDialog;
 import org.telegram.ui.Components.PasscodeView;
 import org.telegram.ui.Components.SimpleFloatPropertyCompat;
 import org.telegram.ui.Components.SizeNotifierFrameLayout;
-import org.telegram.ui.Components.VerticalPositionAutoAnimator;
 import org.telegram.ui.DialogsActivity;
 import org.telegram.ui.LaunchActivity;
 //import org.telegram.ui.PaymentFormActivity;
@@ -241,6 +229,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
 
     private boolean dismissed;
     private boolean fullscreen;
+    private boolean fullscreenBlur;
     private float fullscreenProgress;
     private float fullscreenTransitionProgress;
     private boolean fullscreenInProgress;
@@ -319,6 +308,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         tab.lastUrl = webViewContainer != null ? webViewContainer.getUrlLoaded() : null;
         tab.expanded = swipeContainer != null && swipeContainer.getSwipeOffsetY() < 0 || forceExpnaded || isFullSize() || fullscreen;
         tab.fullscreen = fullscreen;
+        tab.fullscreenBlur = fullscreenBlur;
         tab.fullsize = (fullsize == null ? defaultFullsize : fullsize);
         tab.expandedOffset = swipeContainer != null ? swipeContainer.getOffsetY() : Float.MAX_VALUE;
         tab.needsContext = needsContext;
@@ -387,7 +377,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
 //            setMainButton(tab.main);
             botButtons.setState(tab.buttons, false);
         }
-        setFullscreen( tab.fullscreen, false);
+        setFullscreen(tab.fullscreen, false, tab.fullscreenBlur);
         currentAccount = tab.props != null ? tab.props.currentAccount : UserConfig.selectedAccount;
         if (tab.webView != null) {
 //            tab.webView.resumeTimers();
@@ -628,7 +618,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
                 final TLRPC.User bot = MessagesController.getInstance(currentAccount).getUser(botId);
                 if (granted) {
                     BulletinFactory.UndoObject undo = new BulletinFactory.UndoObject();
-                    undo.undoText = LocaleController.getString(R.string.Undo);
+                    undo.undoText = LocaleController.getString(R.string.UndoNoCaps);
                     undo.onUndo = () -> {
                         BotLocation.get(getContext(), currentAccount, botId).setGranted(false, null);
                     };
@@ -772,7 +762,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
                     DialogsActivity dialogsActivity = new DialogsActivity(args);
                     AndroidUtilities.hideKeyboard(windowView);
                     OverlayActionBarLayoutDialog overlayActionBarLayoutDialog = new OverlayActionBarLayoutDialog(context, resourcesProvider);
-                    dialogsActivity.setDelegate((fragment, dids, message1, param, notify, scheduleDate, topicsFragment) -> {
+                    dialogsActivity.setDelegate((fragment, dids, message1, param, notify, scheduleDate, scheduleRepeatPeriod, topicsFragment) -> {
                         long did = dids.get(0).dialogId;
 
                         Bundle args1 = new Bundle();
@@ -840,17 +830,17 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
 
             @Override
             public boolean isClipboardAvailable() {
-                return MediaDataController.getInstance(currentAccount).botInAttachMenu(botId);
+                return MediaDataController.getInstance(currentAccount).botInAttachMenu(botId) || MessagesController.getInstance(currentAccount).whitelistedBots.contains(botId);
             }
 
             @Override
-            public String onFullscreenRequested(boolean fullscreen) {
+            public String onFullscreenRequested(boolean fullscreen, boolean blur) {
                 if (BotWebViewSheet.this.fullscreen == fullscreen) {
                     if (BotWebViewSheet.this.fullscreen)
                         return "ALREADY_FULLSCREEN";
                     return null;
                 }
-                setFullscreen(fullscreen, true);
+                setFullscreen(fullscreen, true, blur);
                 return null;
             }
 
@@ -871,7 +861,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         dimPaint.setColor(0x40000000);
         actionBarColor = getColor(Theme.key_windowBackgroundWhite);
         navBarColor = getColor(Theme.key_windowBackgroundGray);
-        AndroidUtilities.setNavigationBarColor(getWindow(), navBarColor, false);
+        AndroidUtilities.setNavigationBarColor(this, navBarColor, false);
         windowView = new WindowView(context);
         windowView.setDelegate((keyboardHeight, isWidthGreater) -> {
             if (keyboardHeight > AndroidUtilities.dp(20)) {
@@ -911,9 +901,8 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         fullscreenButtons = new BotFullscreenButtons(getContext());
         fullscreenButtons.setAlpha(0f);
         fullscreenButtons.setVisibility(View.GONE);
-        if (!MessagesController.getInstance(currentAccount).disableBotFullscreenBlur) {
-            fullscreenButtons.setParentRenderNode(swipeContainer.getRenderNode());
-        }
+        fullscreenBlur = !MessagesController.getInstance(currentAccount).disableBotFullscreenBlur && SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH;
+        fullscreenButtons.setParentRenderNode(fullscreenBlur ? swipeContainer.getRenderNode() : null);
         windowView.addView(fullscreenButtons, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
         fullscreenButtons.setOnCloseClickListener(() -> {
             if (!webViewContainer.onBackPressed()) {
@@ -1163,7 +1152,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            AndroidUtilities.setLightNavigationBar(window, ColorUtils.calculateLuminance(navBarColor) >= 0.721f);
+            AndroidUtilities.setLightNavigationBar(this, ColorUtils.calculateLuminance(navBarColor) >= 0.721f);
         }
 
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didSetNewTheme);
@@ -2076,6 +2065,10 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
         activeSheets.remove(this);
     }
 
+    public BulletinFactory getBulletinFactory() {
+        return BulletinFactory.of(bulletinContainer, resourcesProvider);
+    }
+
     public void release() {
         if (superDismissed) return;
         try {
@@ -2192,13 +2185,18 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
     private boolean resetOffsetY = true;
     private ValueAnimator fullscreenAnimator;
     public void setFullscreen(boolean fullscreen, boolean animated) {
+        setFullscreen(fullscreen, animated, fullscreenBlur);
+    }
+    public void setFullscreen(boolean fullscreen, boolean animated, boolean blur) {
         if (this.fullscreen == fullscreen) return;
         this.fullscreen = fullscreen;
+        this.fullscreenBlur = blur && !MessagesController.getInstance(currentAccount).disableBotFullscreenBlur && SharedConfig.getDevicePerformanceClass() >= SharedConfig.PERFORMANCE_CLASS_HIGH;
         if (fullscreenAnimator != null) {
             fullscreenAnimator.cancel();
         }
         if (fullscreenButtons != null) {
             fullscreenButtons.setPreview(fullscreen, animated);
+            fullscreenButtons.setParentRenderNode(fullscreenBlur ? swipeContainer.getRenderNode() : null);
         }
         swipeContainerFromWidth = swipeContainer.getWidth();
         swipeContainerFromHeight = swipeContainer.getHeight();
@@ -2333,7 +2331,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
             navBarColor = to;
             checkNavBarColor();
         }
-        AndroidUtilities.setNavigationBarColor(getWindow(), navBarColor, false);
+        AndroidUtilities.setNavigationBarColor(this, navBarColor, false);
     }
 
     public void setActionBarColor(int color, boolean isOverride, boolean animated) {
@@ -2399,7 +2397,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
 
     public void checkNavBarColor() {
         if (!superDismissed && LaunchActivity.instance != null) {
-            LaunchActivity.instance.checkSystemBarColors(true, true, true, false);
+            LaunchActivity.instance.checkSystemBarColors(true, true, true);
 //            AndroidUtilities.setNavigationBarColor(getWindow(), navBarColor, false);
         }
         if (windowView != null) {
@@ -2606,8 +2604,7 @@ public class BotWebViewSheet extends Dialog implements NotificationCenter.Notifi
                 invalidate();
                 updateWindowFlags();
                 if (LaunchActivity.instance != null && fullscreen) {
-                    LaunchActivity.instance.requestCustomNavigationBar();
-                    LaunchActivity.instance.setNavigationBarColor(navBarColor, false);
+                    LaunchActivity.instance.setNavigationBarColor(navBarColor);
                 }
             }
         }

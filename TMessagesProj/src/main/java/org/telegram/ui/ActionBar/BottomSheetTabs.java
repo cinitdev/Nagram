@@ -23,11 +23,13 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewParent;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.core.graphics.ColorUtils;
+import androidx.core.view.ViewCompat;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ContactsController;
@@ -872,6 +874,7 @@ public class BottomSheetTabs extends FrameLayout {
         public boolean confirmDismiss;
 
         public boolean fullscreen;
+        public boolean fullscreenBlur;
         public boolean fullsize;
         public boolean needsContext;
 
@@ -969,6 +972,11 @@ public class BottomSheetTabs extends FrameLayout {
         } else {
             bottomTabsProgress = bottomTabsHeight;
             invalidate();
+        }
+
+        final ViewParent parent = getParent();
+        if (parent instanceof View) {
+            ViewCompat.requestApplyInsets((View) parent);
         }
     }
 

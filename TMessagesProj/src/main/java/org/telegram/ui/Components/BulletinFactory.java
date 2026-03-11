@@ -66,6 +66,7 @@ import tw.nekomimi.nekogram.NekoConfig;
 public final class BulletinFactory {
 
     public static BulletinFactory of(BaseFragment fragment) {
+        if (fragment == null) return global();
         return new BulletinFactory(fragment);
     }
 
@@ -92,7 +93,7 @@ public final class BulletinFactory {
     }
 
     public Bulletin makeForError(TLRPC.TL_error error) {
-        if (!LaunchActivity.isActive) return new Bulletin.EmptyBulletin();
+        if (!LaunchActivity.isActive()) return new Bulletin.EmptyBulletin();
         if (error == null) {
             return createErrorBulletin(LocaleController.formatString(R.string.UnknownError));
         } else {
@@ -101,20 +102,38 @@ public final class BulletinFactory {
     }
 
     public void showForError(TLRPC.TL_error error) {
-        if (!LaunchActivity.isActive) return;
+        showForError(error, false);
+    }
+    public void showForError(TLRPC.TL_error error, boolean top) {
+        if (!LaunchActivity.isActive()) return;
         if (error == null) {
             Bulletin b = createErrorBulletin(LocaleController.formatString(R.string.UnknownError));
             b.hideAfterBottomSheet = false;
-            b.show();
+            b.show(top);
         } else {
             Bulletin b = createErrorBulletin(LocaleController.formatString(R.string.UnknownErrorCode, error.text));
             b.hideAfterBottomSheet = false;
-            b.show();
+            b.show(top);
+        }
+    }
+    public void showForError(String errorCode) {
+        showForError(errorCode, false);
+    }
+    public void showForError(String errorCode, boolean top) {
+        if (!LaunchActivity.isActive()) return;
+        if (TextUtils.isEmpty(errorCode)) {
+            Bulletin b = createErrorBulletin(LocaleController.formatString(R.string.UnknownError));
+            b.hideAfterBottomSheet = false;
+            b.show(top);
+        } else {
+            Bulletin b = createErrorBulletin(LocaleController.formatString(R.string.UnknownErrorCode, errorCode));
+            b.hideAfterBottomSheet = false;
+            b.show(top);
         }
     }
 
     public static void showError(TLRPC.TL_error error) {
-        if (!LaunchActivity.isActive) return;
+        if (!LaunchActivity.isActive()) return;
         global().createErrorBulletin(LocaleController.formatString(R.string.UnknownErrorCode, error.text)).show();
     }
 
@@ -412,6 +431,10 @@ public final class BulletinFactory {
     }
 
     public Bulletin createSimpleBulletin(int iconRawId, CharSequence text, CharSequence button, int duration, Runnable onButtonClick) {
+        return createSimpleBulletin(iconRawId, text, button, duration, false, onButtonClick);
+    }
+
+    public Bulletin createSimpleBulletin(int iconRawId, CharSequence text, CharSequence button, int duration, boolean icon, Runnable onButtonClick) {
         final Bulletin.LottieLayout layout = new Bulletin.LottieLayout(getContext(), resourcesProvider);
         if (iconRawId != 0) {
             layout.setAnimation(iconRawId, 36, 36);
@@ -424,7 +447,7 @@ public final class BulletinFactory {
         layout.textView.setSingleLine(false);
         layout.textView.setMaxLines(3);
         layout.textView.setText(text);
-        layout.setButton(new Bulletin.UndoButton(getContext(), true, resourcesProvider).setText(button).setUndoAction(onButtonClick));
+        layout.setButton(new Bulletin.UndoButton(getContext(), true, icon, resourcesProvider).setText(button).setUndoAction(onButtonClick));
         return create(layout, duration);
     }
 
@@ -511,7 +534,7 @@ public final class BulletinFactory {
             layout = singleLineLayout;
         }
         layout.setTimer();
-        layout.setButton(new Bulletin.UndoButton(getContext(), true, textAndIcon, resourcesProvider).setText(LocaleController.getString(R.string.Undo)).setUndoAction(onUndo).setDelayedAction(onAction));
+        layout.setButton(new Bulletin.UndoButton(getContext(), true, textAndIcon, resourcesProvider).setText(LocaleController.getString(R.string.UndoNoCaps)).setUndoAction(onUndo).setDelayedAction(onAction));
         return create(layout, Bulletin.DURATION_PROLONG);
     }
 
@@ -593,7 +616,7 @@ public final class BulletinFactory {
         }
 
         if (undoObject != null) {
-            layout.setButton(new Bulletin.UndoButton(getContext(), true, resourcesProvider).setText(LocaleController.getString(R.string.Undo)).setUndoAction(undoObject.onUndo).setDelayedAction(undoObject.onAction));
+            layout.setButton(new Bulletin.UndoButton(getContext(), true, resourcesProvider).setText(LocaleController.getString(R.string.UndoNoCaps)).setUndoAction(undoObject.onUndo).setDelayedAction(undoObject.onAction));
         }
 
         return create(layout, Bulletin.DURATION_PROLONG);

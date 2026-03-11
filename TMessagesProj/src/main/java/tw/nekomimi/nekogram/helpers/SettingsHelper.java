@@ -51,7 +51,7 @@ public class SettingsHelper {
                     fragment = nekox_fragment = new NekoAccountSettingsActivity();
                     break;
                 case "about":
-                    fragment = new NekoSettingsActivity().startOnAbout();
+                    fragment = neko_fragment = new NekoSettingsActivity();
                     break;
                 case "chat":
                 case "chats":
@@ -134,8 +134,11 @@ public class SettingsHelper {
                     continue;
                 }
                 Runnable open = () -> {
-                    callback.presentFragment(fragment);
-                    AndroidUtilities.runOnUIThread(() -> fragment.scrollToRow(key, null));
+                    try {
+                        BaseNekoXSettingsActivity f = fragment.getClass().getDeclaredConstructor().newInstance();
+                        callback.presentFragment(f);
+                        AndroidUtilities.runOnUIThread(() -> f.scrollToRow(key, null));
+                    } catch (Exception ignored) {}
                 };
                 SettingsSearchResult result = new SettingsSearchResult(
                         guid, title, n_title, f_title, drawable, open
