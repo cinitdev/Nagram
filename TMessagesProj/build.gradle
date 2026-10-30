@@ -3,11 +3,39 @@ import io.sentry.android.gradle.instrumentation.logcat.LogcatLevel
 
 apply plugin: "com.android.application"
 apply plugin: "kotlin-android"
+apply plugin: "org.jetbrains.kotlin.plugin.serialization"
 apply plugin: "io.sentry.android.gradle"
 apply plugin: "io.objectbox"
 
+apply plugin: 'org.telegram.build-plugin'
+apply plugin: 'org.telegram.build-app-plugin'
+apply plugin: 'idea'
+
+idea {
+    module {
+        excludeDirs += [
+            file('jni/td'),
+            file('jni/third_party/absl'),
+            file('jni/third_party/boringssl'),
+            file('jni/third_party/dav1d'),
+            file('jni/third_party/ffmpeg'),
+            file('jni/third_party/libvpx'),
+            file('jni/third_party/libyuv'),
+            file('jni/third_party/openh264'),
+            file('jni/third_party/xiph'),
+            file('jni/third_party/wamr'),
+            file('jni/third_party/libprisma'),
+            file('jni/third_party/boost-regex'),
+            file('jni/tgcalls'),
+            file('jni/tlottie'),
+            file('jni/voip/webrtc'),
+            file('jni/sqlite')
+        ]
+    }
+}
+
 def verName = APP_VERSION_NAME
-def verCode = 1231
+def verCode = 1255
 
 def officialVer = APP_VERSION_NAME
 def officialCode = APP_VERSION_CODE
@@ -40,7 +68,6 @@ def alias = null
 def pwd = null
 def sentry_token = System.getenv("SENTRY_AUTH_TOKEN")
 def nagram_build_args = System.getenv("NAGRAM_BUILD_ARGS")
-def sentry_upload =  project.rootProject.file("sentry.properties").exists()
 def disableCMakeRelWithDebInfo = System.getenv("COMPILE_NATIVE") == null
 
 Properties properties
@@ -65,6 +92,8 @@ keystorePwd = keystorePwd ?: System.getenv("KEYSTORE_PASS")
 alias = alias ?: System.getenv("ALIAS_NAME")
 pwd = pwd ?: System.getenv("ALIAS_PASS")
 
+def sentry_upload = sentry_token != null && !sentry_token.isEmpty()
+
 def targetTask = ""
 if (!gradle.startParameter.taskNames.isEmpty()) {
     if (gradle.startParameter.taskNames.size == 1) {
@@ -76,9 +105,9 @@ def nativeTarget = System.getenv("NATIVE_TARGET")
 if (nativeTarget == null) nativeTarget = ""
 
 android {
-    compileSdkVersion 35
-    buildToolsVersion '35.0.0'
-    ndkVersion rootProject.ext.ndkVersion // 26.3.11579264
+    compileSdkVersion 36
+    buildToolsVersion '36.0.0'
+    ndkVersion rootProject.ext.ndkVersion // 27.2.12479018
 
     defaultConfig.applicationId = "xyz.nextalone.nagram"
 
@@ -147,9 +176,9 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 21
+        minSdkVersion 23
         //noinspection ExpiredTargetSdkVersion,OldTargetApi
-        targetSdkVersion 35
+        targetSdkVersion 36
 
         versionName verName
         versionCode verCode
@@ -173,7 +202,9 @@ android {
 
         externalNativeBuild {
             cmake {
+                version '3.22.1'
                 arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-21' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
+                targets 'tmessages.49'
             }
         }
     }
@@ -192,12 +223,20 @@ android {
         unitTests.includeAndroidResources = true
     }
 
+    androidResources {
+        noCompress += "pack"
+        localeFilters += ["zz"]
+    }
+
     signingConfigs {
         release {
             storeFile project.file("release.keystore")
             storePassword keystorePwd
             keyAlias alias
             keyPassword pwd
+            enableV1Signing true
+            enableV2Signing true
+            enableV3Signing true
         }
     }
 
@@ -207,7 +246,6 @@ android {
             debuggable true
             jniDebuggable true
             multiDexEnabled true
-            zipAlignEnabled true
             signingConfig signingConfigs.release
         }
 
@@ -217,7 +255,6 @@ android {
             minifyEnabled true
             shrinkResources true
             multiDexEnabled true
-            zipAlignEnabled true
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
             matchingFallbacks = ["release", "debug"]
             signingConfig signingConfigs.release
@@ -284,7 +321,6 @@ android {
 
 def fcmVersion = "23.4.1"
 def crashlyticsVersion = "18.6.2"
-def playCoreVersion = "1.10.3"
 
 dependencies {
     implementation 'androidx.fragment:fragment:1.8.9'
@@ -295,6 +331,7 @@ dependencies {
     implementation "androidx.sharetarget:sharetarget:1.2.0"
     implementation "androidx.interpolator:interpolator:1.0.0"
     implementation 'androidx.biometric:biometric:1.1.0'
+    implementation 'androidx.webkit:webkit:1.14.0'
 
     implementation ('com.google.android.gms:play-services-cast-framework:21.4.0') {
         exclude group: 'androidx.recyclerview', module: "recyclerview"
@@ -302,13 +339,17 @@ dependencies {
     implementation ("androidx.mediarouter:mediarouter:1.7.0") {
         exclude group: 'androidx.recyclerview', module: "recyclerview"
     }
+    implementation 'com.google.zxing:core:3.5.4'
+    implementation 'com.neovisionaries:nv-websocket-client:2.14'
+
+    implementation 'androidx.car.app:app:1.7.0'
+    implementation 'androidx.car.app:app-projected:1.7.0'
     implementation 'org.nanohttpd:nanohttpd:2.3.1'
 
     compileOnly 'org.checkerframework:checker-qual:2.5.2'
     compileOnly 'org.checkerframework:checker-compat-qual:2.5.0'
     implementation "com.google.firebase:firebase-messaging:$fcmVersion"
     implementation "com.google.firebase:firebase-crashlytics:$crashlyticsVersion"
-    implementation 'com.google.android.gms:play-services-vision:20.1.3'
     implementation 'com.google.android.gms:play-services-maps:18.1.0'
     implementation 'com.google.android.gms:play-services-auth:20.4.0'
     implementation 'com.google.android.gms:play-services-vision:20.1.3'
@@ -319,7 +360,7 @@ dependencies {
     implementation 'com.stripe:stripe-android:2.0.2'
     // add for auto translate
     implementation 'com.google.mlkit:language-id:17.0.6'
-    implementation 'com.android.billingclient:billing:7.1.1'
+    implementation 'com.android.billingclient:billing:8.0.0'
     implementation 'com.google.code.gson:gson:2.11.0'
     implementation 'com.google.guava:guava:31.1-android'
     implementation 'com.google.android.play:integrity:1.3.0'
@@ -331,23 +372,31 @@ dependencies {
     implementation "androidx.credentials:credentials:1.6.0-alpha04"
     implementation "androidx.credentials:credentials-play-services-auth:1.6.0-alpha04"
 
+    implementation "io.noties.markwon:core:4.6.2"
+    implementation "io.noties.markwon:ext-strikethrough:4.6.2"
+    implementation "io.noties.markwon:ext-tables:4.6.2"
+    implementation "io.noties.markwon:html:4.6.2"
+    implementation "io.noties.markwon:inline-parser:4.6.2"
+    implementation("io.noties.markwon:ext-latex:4.6.2") {
+        exclude group: 'ru.noties', module: 'jlatexmath-android'
+    }
+
+    api project(":TMessagesProj_Modules:media3:media-lib-exoplayer")
+    api project(":TMessagesProj_Modules:media3:media-lib-exoplayer-dash")
+    api project(":TMessagesProj_Modules:media3:media-lib-exoplayer-hls")
+    api project(":TMessagesProj_Modules:media3:media-lib-decoder-ffmpeg")
+    api project(":TMessagesProj_Modules:media3:media-lib-session")
+    api project(':jlatexmath')
+
 //    implementation 'com.google.mlkit:translate:17.0.3'
 
-//    constraints {
-//        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0") {
-//            because("kotlin-stdlib-jdk7 is now a part of kotlin-stdlib")
-//        }
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0") {
-            because("kotlin-stdlib-jdk8 is now a part of kotlin-stdlib")
-        }
-//    }
     implementation ('com.google.android.recaptcha:recaptcha:18.7.1') {
         exclude group: "com.google.crypto.tink", module: "tink-android"
     }
 
     testImplementation "junit:junit:4.13.2"
     testImplementation "androidx.test:core:1.5.0"
-    testImplementation "org.robolectric:robolectric:4.5.1"
+    testImplementation "org.robolectric:robolectric:4.16.1"
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
@@ -355,22 +404,24 @@ dependencies {
     implementation "androidx.browser:browser:1.8.0"
     implementation "androidx.viewpager:viewpager:1.0.0"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
-    // OSM
-    implementation "org.osmdroid:osmdroid-android:6.1.20"
-    // okhttp
-    implementation "com.squareup.okhttp3:okhttp:5.3.2"
-    implementation 'dnsjava:dnsjava:3.6.3'
+    // map
+    implementation "org.maplibre.gl:android-sdk:11.13.5"
+
+    // ktor
+    implementation "io.ktor:ktor-client-core:3.3.0"
+    implementation "io.ktor:ktor-client-okhttp:3.3.0"
+    implementation "io.ktor:ktor-client-content-negotiation:3.3.0"
+    implementation "io.ktor:ktor-serialization-kotlinx-json-jvm:3.3.0"
+    implementation "io.ktor:ktor-client-logging:3.3.0"
 
     implementation "cn.hutool:hutool-core:5.8.42"
     implementation "cn.hutool:hutool-crypto:5.8.42"
     implementation 'cn.hutool:hutool-http:5.8.42'
-    implementation "com.jakewharton:process-phoenix:3.0.0"
     // openpgp
     implementation project(":openpgp-api")
 
     compileOnly fileTree("libs")
 
-    compileOnly "com.google.android.play:core:$playCoreVersion"
     // add for undo and redo
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
     // add splash screen
@@ -381,6 +432,8 @@ dependencies {
     implementation 'org.unifiedpush.android:connector:3.1.2'
     // add for copy webm and tgs to gif
     implementation "com.airbnb.android:lottie:6.4.1"
+    // add for passkeys
+    implementation "co.nstant.in:cbor:0.9"
 }
 
 apply plugin: "com.google.gms.google-services"
@@ -392,7 +445,7 @@ sentry {
     debug = false
 
     // The slug of the Sentry organization to use for uploading proguard mappings/source contexts.
-    org = "pagermaid"
+    org = "teampgm"
 
     // The slug of the Sentry project to use for uploading proguard mappings/source contexts.
     projectName = "nagram"
@@ -504,7 +557,7 @@ sentry {
         // as Gradle will resolve it to the latest version.
         //
         // Defaults to the latest published Sentry version.
-        sentryVersion = '8.29.0'
+        sentryVersion = '8.58.0'
     }
 
     // Disables or enables dependencies metadata reporting for Sentry.

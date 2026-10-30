@@ -42,7 +42,6 @@ import org.telegram.tgnet.TLRPC.TL_messageEntityEmail
 import org.telegram.tgnet.TLRPC.TL_messageEntityHashtag
 import org.telegram.tgnet.TLRPC.TL_messageEntityMention
 import org.telegram.tgnet.TLRPC.TL_messageEntityPhone
-import org.telegram.tgnet.TLRPC.TL_messageEntitySpoiler
 import org.telegram.tgnet.TLRPC.TL_messageEntityUrl
 import org.telegram.tgnet.TLRPC.TL_messageMediaPoll
 import org.telegram.ui.ActionBar.Theme
@@ -132,7 +131,7 @@ object MessageHelper {
                     addFileToClipboard(file2, callback)
                 }
             }
-        } catch (ignored: java.lang.Exception) {
+        } catch (_: java.lang.Exception) {
         }
     }
 
@@ -167,10 +166,11 @@ object MessageHelper {
         }
     }
 
+    @JvmStatic
     fun zalgoFilter(
-        text: String
+        text: String?
     ): String {
-        return zalgoFilter(text as CharSequence).toString()
+        return zalgoFilter(text as CharSequence?).toString()
     }
 
     fun zalgoFilter(
@@ -265,7 +265,7 @@ object MessageHelper {
 
     @JvmStatic
     fun isMessageObjectAutoTranslatable(messageObject: MessageObject): Boolean {
-        if (messageObject.messageOwner.translated || messageObject.translating || messageObject.isOutOwner) {
+        if (messageObject.translated || messageObject.translating || messageObject.isOutOwner) {
             return false
         }
         return if (messageObject.isPoll) {
@@ -276,21 +276,24 @@ object MessageHelper {
     }
 
     @JvmStatic
-    fun getMessagePlainText(messageObject: MessageObject): String {
-        val message: String = if (messageObject.isPoll) {
-            val poll = (messageObject.messageOwner.media as TL_messageMediaPoll).poll
-            val pollText = StringBuilder(poll.question.text).append("\n")
-            for (answer in poll.answers) {
-                pollText.append("\n\uD83D\uDD18 ")
-                pollText.append(answer.text.text)
+    fun getMessagePlainText(messageObject: MessageObject): String? {
+        return if (messageObject.isPoll) {
+            val media = messageObject.messageOwner.media as? TL_messageMediaPoll
+            val poll = media?.poll
+            if (poll == null) {
+                null
+            } else {
+                val pollText = StringBuilder(poll.question?.text ?: "").append("\n")
+                for (answer in poll.answers) {
+                    pollText.append("\n\uD83D\uDD18 ").append(answer.text?.text ?: continue)
+                }
+                pollText.toString()
             }
-            pollText.toString()
         } else if (messageObject.isVoiceTranscriptionOpen) {
             messageObject.messageOwner.voiceTranscription
         } else {
             messageObject.messageOwner.message
         }
-        return message
     }
 
     private fun formatTime(timestamp: Int): String {

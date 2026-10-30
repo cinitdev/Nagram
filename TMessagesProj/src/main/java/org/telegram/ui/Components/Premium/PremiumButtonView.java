@@ -12,6 +12,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.view.Gravity;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
@@ -111,7 +112,26 @@ public class PremiumButtonView extends FrameLayout implements Loadable {
         iconView.setColorFilter(Color.WHITE);
         iconView.setVisibility(View.GONE);
 
-        buttonLayout = new FrameLayout(context);
+        buttonLayout = new FrameLayout(context) {
+            @Override
+            public void onInitializeAccessibilityNodeInfo(@NonNull AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(info);
+                info.setClassName("android.widget.Button");
+                CharSequence label = null;
+                if (showOverlay && overlayTextView != null) {
+                    label = overlayTextView.getText();
+                }
+                if (label == null && buttonTextView != null) {
+                    label = buttonTextView.getText();
+                }
+                if (label != null) {
+                    info.setText(label);
+                    if (getContentDescription() == null) {
+                        info.setContentDescription(label);
+                    }
+                }
+            }
+        };
         buttonLayout.addView(linearLayout, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
         buttonLayout.setBackground(Theme.createSimpleSelectorRoundRectDrawable(radius, Color.TRANSPARENT, ColorUtils.setAlphaComponent(Color.WHITE, 120)));
 
@@ -161,6 +181,16 @@ public class PremiumButtonView extends FrameLayout implements Loadable {
             paintOverlayPaint.setColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
             updateOverlayProgress();
         }
+    }
+
+    private boolean nonClickable;
+
+    public void setNonClickable() {
+        this.nonClickable = true;
+        setClickable(false);
+        buttonLayout.setClickable(false);
+        setStateListAnimator(null);
+
     }
 
     public boolean isShowOverlay() {
@@ -284,6 +314,7 @@ public class PremiumButtonView extends FrameLayout implements Loadable {
         showOverlay = true;
         this.drawOverlayColor = drawOverlayColor;
         overlayTextView.setText(text, animated);
+        overlayTextView.setContentDescription(text);
         updateOverlay(animated);
     }
 
@@ -377,7 +408,11 @@ public class PremiumButtonView extends FrameLayout implements Loadable {
             buttonTextView.cancelAnimation();
         }
         buttonTextView.setText(text, animated);
-        buttonLayout.setOnClickListener(clickListener);
+        buttonLayout.setContentDescription(text);
+
+        if (!nonClickable) {
+            buttonLayout.setOnClickListener(clickListener);
+        }
     }
 
     public void checkCounterView() {

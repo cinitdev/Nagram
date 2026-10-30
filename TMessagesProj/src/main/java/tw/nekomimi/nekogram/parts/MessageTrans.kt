@@ -1,8 +1,17 @@
 package tw.nekomimi.nekogram.parts
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.telegram.messenger.MessageObject
-import org.telegram.messenger.TranslateController
 import org.telegram.tgnet.TLRPC
 import org.telegram.ui.ActionBar.AlertDialog
 import org.telegram.ui.ChatActivity
@@ -15,45 +24,36 @@ import tw.nekomimi.nekogram.utils.UIUtil
 import tw.nekomimi.nekogram.utils.uDismiss
 import tw.nekomimi.nekogram.utils.uUpdate
 import xyz.nextalone.nagram.NaConfig
-import java.util.*
+import xyz.nextalone.nagram.helper.MessageHelper
+import java.util.Locale
+import java.util.WeakHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-fun MessageObject.translateFinished(locale: Locale): Int {
+private const val MAX_CONTEXT_MESSAGES = 5
+private const val TRANSLATION_PARALLELISM = 5
 
-    val db = TranslateDb.forLocale(locale)
-
-    translating = false
-
-    if (isPoll) {
-        val pool = (messageOwner.media as TLRPC.TL_messageMediaPoll).poll
-        val question = db.query(pool.question.text) ?: return 0
-        val translatedPoll = TranslateController.PollText.fromMessage(this)
-
-        translatedPoll.question.text =
-            "${if (!NaConfig.hideOriginAfterTranslation.Bool()) translatedPoll.question.text + " | " else ""}$question"
-        translatedPoll.answers.forEach {
-            val answer = db.query(it.text.text) ?: return 0
-            it.text.text += " | $answer"
-        }
-        if (translatedPoll.solution != null) {
-            val solution = db.query(translatedPoll.solution.text) ?: return 0
-            translatedPoll.solution.text =
-                "${if (!NaConfig.hideOriginAfterTranslation.Bool()) translatedPoll.solution.text + " | " else ""}$solution"
-        }
-        messageOwner.translatedPoll = translatedPoll
-    } else {
-
-        val text = db.query(messageOwner.message.takeIf { !it.isNullOrBlank() } ?: return 1)
-                ?: return 0
-
-        messageOwner.translatedMessage =
-            "${if (!NaConfig.hideOriginAfterTranslation.Bool()) messageOwner.message + "\n\n--------\n\n" else ""}$text"
-
+/**
+ * Collects the few messages following [message] so that an LLM translator can resolve the
+ * pronouns and the context of the sentence being translated.
+ */
+private fun translationContext(message: MessageObject, timeline: List<MessageObject>): List<String> {
+    if (NekoConfig.translationProvider.Int() != Translator.providerLLM || !NaConfig.llmUseContext.Bool()) {
+        return emptyList()
     }
+    val index = timeline.indexOf(message)
+    if (index < 0) return emptyList()
 
-    return 2
-
+    return timeline.asSequence()
+        .drop(index + 1)
+        .filter {
+            it.messageOwner.id != 0 && !it.isDateObject && !it.isSponsored &&
+                MessageHelper.isMessageObjectAutoTranslatable(it)
+        }
+        .take(MAX_CONTEXT_MESSAGES)
+        .mapNotNull { MessageHelper.getMessagePlainText(it)?.takeIf { text -> text.isNotBlank() } }
+        .toList()
+        .asReversed()
 }
 
 @JvmName("translateMessages")
@@ -66,7 +66,8 @@ fun ChatActivity.translateMessages2(target: Locale) = translateMessages(target)
 fun ChatActivity.translateMessages3(messages: List<MessageObject>) = translateMessages(messages = messages)
 
 @JvmName("translateMessages")
-fun ChatActivity.translateMessages4(messages: List<MessageObject>, autoTranslate: Boolean) = translateMessages(messages = messages, autoTranslate = autoTranslate)
+fun ChatActivity.translateMessages4(messages: List<MessageObject>, autoTranslate: Boolean) =
+    translateMessages(messages = messages, autoTranslate = autoTranslate)
 
 fun ChatActivity.translateMessages(
     target: Locale = NekoConfig.translateToLang.String().code2Locale,
@@ -75,185 +76,253 @@ fun ChatActivity.translateMessages(
         ?: emptyList(),
     autoTranslate: Boolean = false
 ) {
-    if (messages.any { it.translating }) return
+    if (messages.isEmpty() || messages.any { it.translating }) return
 
-    if (messages.all { it.messageOwner.translated }) {
-        messages.forEach {
-            it.messageOwner.translated = false
-            messageHelper.resetMessageContent(dialogId, it)
-            it.translating = false
-        }
+    if (messages.all { it.translated }) {
+        messages.forEach { clearTranslation(it) }
         return
-    } else {
-        messages.forEach { it.translating = true }
     }
 
-    var status: AlertDialog? = null
+    messages.forEach { it.translating = true }
+
+    // Auto translation starts one job per incoming message, so the cancel flag, the progress
+    // label and the bounded dispatcher are per chat and shared by every job of this dialog.
+    val cancel = cancellationFlag()
+    val status = progressDialog(autoTranslate)
+    val timeline = this.messages.toList()
+    val scope = translationScope()
+
+    scope.launch {
+        val progress = ProgressCounter(messages.size, status)
+        try {
+            messages.map { message ->
+                async { translateOne(message, target, timeline, cancel, status, progress) }
+            }.awaitAll()
+        } finally {
+            messages.forEach { it.translating = false }
+            UIUtil.runOnUIThread { if (!cancel.get()) status?.uDismiss() }
+        }
+    }
+}
+
+/** Per chat translation state, shared by every job because auto translation runs one per message. */
+private class TransState {
     val cancel = AtomicBoolean()
-    if (!autoTranslate) {
-        status = AlertUtil.showProgress(parentActivity).apply {
-            setOnCancelListener { cancel.set(true) }
-            show()
-        }
-    }
-
-    val deferreds = LinkedList<Deferred<Unit>>()
-    val taskCount = AtomicInteger(messages.size)
-    val transPool = newFixedThreadPoolContext(5, "Message Trans Pool")
-
-    fun next() {
-        val index = taskCount.decrementAndGet()
-        if (index == 0) {
-            status?.uDismiss()
-        } else if (messages.size > 1) {
-            status?.uUpdate("${messages.size - index} / ${messages.size}")
-        }
-    }
-
-    GlobalScope.launch(Dispatchers.IO) {
-        messages.forEach { selectedObject ->
-            when (selectedObject.translateFinished(target)) {
-                1 -> next()
-                2 -> {
-                    next()
-                    withContext(Dispatchers.Main) {
-                        selectedObject.messageOwner.translated = true
-                        messageHelper.resetMessageContent(dialogId, selectedObject)
-                    }
-                }
-                else -> deferreds.add(async(transPool) {
-                    translateMessage(selectedObject, target, cancel, status)
-                    if (!cancel.get()) {
-                        selectedObject.messageOwner.translated = true
-                        next()
-                        withContext(Dispatchers.Main) {
-                            messageHelper.resetMessageContent(dialogId, selectedObject)
-                        }
-                    }
-                })
-            }
-        }
-
-        deferreds.awaitAll()
-        transPool.cancel()
-        UIUtil.runOnUIThread { if (!cancel.get()) status?.uDismiss() }
-    }
-    messages.forEach { it.translating = false }
+    val dispatcher = Dispatchers.IO.limitedParallelism(TRANSLATION_PARALLELISM, "MessageTrans")
+    var scope: CoroutineScope? = null
+    var status: AlertDialog? = null
 }
 
-private suspend fun ChatActivity.translateMessage(
-    message: MessageObject,
-    target: Locale,
-    cancel: AtomicBoolean,
-    status: AlertDialog?
-) {
-    val db = TranslateDb.forLocale(target)
-    if (message.isPoll) {
-        translatePoll(message, target, db, cancel, status)
-    } else {
-        translateText(message, target, db, cancel, status)
+private val transStates = WeakHashMap<ChatActivity, TransState>()
+
+/** Returns (and lazily creates) the translation state of this chat. */
+private fun ChatActivity.translationState(): TransState {
+    synchronized(transStates) {
+        transStates[this]?.let { return it }
+        val state = TransState()
+        transStates[this] = state
+        return state
     }
 }
 
-private suspend fun ChatActivity.translatePoll(
+/** Cancellation flag of this chat; setting it aborts every running translation of it. */
+private fun ChatActivity.cancellationFlag(): AtomicBoolean = translationState().cancel
+
+/** Progress dialog of a manual translation. Auto translation shows none, so [autoTranslate] skips it. */
+private fun ChatActivity.progressDialog(autoTranslate: Boolean): AlertDialog? {
+    if (autoTranslate) return null
+    val state = translationState()
+    synchronized(state) {
+        if (state.status?.isShowing != true) {
+            state.status = AlertUtil.showProgress(parentActivity).apply {
+                setOnCancelListener { cancelTranslations() }
+                show()
+            }
+        }
+        return state.status
+    }
+}
+
+/**
+ * Scope shared by every translation job of this chat.
+ *
+ * It is created once and reused on purpose: auto translation calls [translateMessages] once per
+ * incoming message, so a fresh scope per call would cancel the jobs of the previous messages.
+ */
+private fun ChatActivity.translationScope(): CoroutineScope {
+    val state = translationState()
+    synchronized(transStates) {
+        state.scope?.takeIf { it.isActive }?.let { return it }
+        val scope = CoroutineScope(SupervisorJob() + state.dispatcher)
+        state.scope = scope
+        return scope
+    }
+}
+
+/** Cancels the in-flight translation jobs of this chat, if any. */
+fun ChatActivity.cancelTranslations() {
+    synchronized(transStates) {
+        transStates.remove(this)?.let { state ->
+            state.cancel.set(true)
+            state.scope?.cancel()
+        }
+    }
+}
+
+/** Keeps the "done / total" label of the progress dialog up to date. */
+private class ProgressCounter(private val total: Int, private val status: AlertDialog?) {
+    private val remaining = AtomicInteger(total)
+
+    fun tick() {
+        val left = remaining.decrementAndGet()
+        if (status != null && total > 1) {
+            status.uUpdate("${total - left} / $total")
+        }
+    }
+}
+
+private suspend fun ChatActivity.translateOne(
     message: MessageObject,
     target: Locale,
-    db: TranslateDb,
+    timeline: List<MessageObject>,
     cancel: AtomicBoolean,
-    status: AlertDialog?
+    status: AlertDialog?,
+    progress: ProgressCounter
 ) {
-    val pool = (message.messageOwner.media as TLRPC.TL_messageMediaPoll).poll
-    var question = db.query(pool.question.text)
-    if (question == null) {
-        if (cancel.get()) return
-        question = runCatching {
-            Translator.translate(target, pool.question.text)
-        }.getOrElse {
-            handleError(target, it, cancel, status)
-            return
+    try {
+        val context = translationContext(message, timeline)
+        val db = TranslateDb.forLocale(target)
+        if (message.isPoll) {
+            translatePoll(message, target, context, db, cancel, status)
+        } else {
+            translateFromCache(message, db) || translateText(message, target, context, cancel, status)
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        reportError(target, listOf(message), e, cancel, status)
+    } finally {
+        progress.tick()
+        // The chat may be gone by now: a canceled job must not touch the message list.
+        if (currentCoroutineContext().isActive && !cancel.get()) {
+            withContext(Dispatchers.Main) { messageHelper.resetMessageContent(dialogId, message) }
         }
     }
+}
 
-    val translatedPoll = TranslateController.PollText.fromMessage(message)
-    translatedPoll.question.text = buildString {
-        if (!NaConfig.hideOriginAfterTranslation.Bool()) append(pool.question.text + " | ")
-        append(question)
-    }
-
-    translatedPoll.answers.forEach {
-        var answer = db.query(it.text.text)
-        if (answer == null) {
-            if (cancel.get()) return@forEach
-            answer = runCatching {
-                Translator.translate(target, it.text.text)
-            }.getOrElse { e ->
-                handleError(target, e, cancel, status)
-                return@forEach
-            }
-        }
-        it.text.text = buildString {
-            if (!NaConfig.hideOriginAfterTranslation.Bool()) append(it.text.text + " | ")
-            append(answer)
-        }
-    }
-
-    translatedPoll.solution?.let { solution ->
-        var translatedSolution = db.query(solution.text)
-        if (translatedSolution == null) {
-            if (cancel.get()) return
-            translatedSolution = runCatching {
-                Translator.translate(target, solution.text)
-            }.getOrElse {
-                handleError(target, it, cancel, status)
-                return
-            }
-        }
-        solution.text = buildString {
-            if (!NaConfig.hideOriginAfterTranslation.Bool()) append(solution.text + " | ")
-            append(translatedSolution)
-        }
-    }
-
-    message.messageOwner.translatedPoll = translatedPoll
+/**
+ * Applies a cached translation of a plain message without any network access.
+ *
+ * @return true when the message was fully translated from the cache.
+ */
+private fun translateFromCache(message: MessageObject, db: TranslateDb): Boolean {
+    val source = message.textSource() ?: return false
+    val separator = MessageTransText.separatorFor(false)
+    val cached = MessageTransText.mergeCached(source, db, separator) ?: return false
+    markTranslatedLocally(message) { it.translatedText = cached }
+    return true
 }
 
 private suspend fun ChatActivity.translateText(
     message: MessageObject,
     target: Locale,
+    context: List<String>,
+    cancel: AtomicBoolean,
+    status: AlertDialog?
+): Boolean {
+    val source = message.textSource() ?: return false
+    if (cancel.get()) return false
+
+    val separator = MessageTransText.separatorFor(false)
+    val translated = runCatching {
+        Translator.translate(target, MessageTransText.queryTextOf(source), context)
+    }.getOrElse {
+        // Scope cancellation is not a provider failure: let it propagate so no dialog is shown.
+        if (it is CancellationException) throw it
+        reportError(target, listOf(message), it, cancel, status)
+        return false
+    }
+    if (translated.isBlank() || cancel.get()) return false
+
+    markTranslatedLocally(message) { it.translatedText = MessageTransText.merge(source, translated, separator) }
+    return true
+}
+
+private suspend fun ChatActivity.translatePoll(
+    message: MessageObject,
+    target: Locale,
+    context: List<String>,
     db: TranslateDb,
     cancel: AtomicBoolean,
     status: AlertDialog?
-) {
-    var text = db.query(message.messageOwner.message)
-    if (text == null) {
-        text = runCatching {
-            Translator.translate(target, message.messageOwner.message)
-        }.getOrElse {
-            handleError(target, it, cancel, status)
-            return
+): Boolean {
+    MessageTransPoll.pollTextOf(message)?.let { skeleton ->
+        MessageTransPoll.translateCached(skeleton, db)?.let { cached ->
+            markTranslatedLocally(message) { it.translatedPoll = cached }
+            return true
         }
     }
+    if (cancel.get()) return false
 
-    message.messageOwner.translatedMessage = buildString {
-        if (!NaConfig.hideOriginAfterTranslation.Bool()) append(message.messageOwner.message + "\n\n--------\n\n")
-        append(text)
+    // A fresh skeleton is required here: translateCached mutates the poll it is given, so the one
+    // above may already be partially merged.
+    val pollText = MessageTransPoll.pollTextOf(message) ?: return false
+    val translated = runCatching {
+        MessageTransPoll.translate(pollText, target, context, db)
+    }.getOrElse {
+        // Scope cancellation is not a provider failure: let it propagate so no dialog is shown.
+        if (it is CancellationException) throw it
+        reportError(target, listOf(message), it, cancel, status)
+        return false
     }
+
+    markTranslatedLocally(message) { it.translatedPoll = translated }
+    return true
 }
 
-private fun ChatActivity.handleError(
+/**
+ * Stores the translation into the official upstream fields and flags the message as locally
+ * translated, so that `MessageObject.updateTranslation` keeps showing it regardless of the
+ * dialog wide setting.
+ */
+private fun markTranslatedLocally(message: MessageObject, block: (TLRPC.Message) -> Unit) {
+    block(message.messageOwner)
+    message.translatedLocally = true
+}
+
+private fun ChatActivity.clearTranslation(message: MessageObject) {
+    val owner = message.messageOwner
+    owner.translatedText = null
+    owner.translatedPoll = null
+    message.translatedLocally = false
+    message.updateTranslation(true)
+    messageHelper.resetMessageContent(dialogId, message)
+}
+
+private fun ChatActivity.reportError(
     target: Locale,
+    messages: List<MessageObject>,
     error: Throwable,
     cancel: AtomicBoolean,
     status: AlertDialog?
 ) {
+    if (cancel.get()) return
     status?.uDismiss()
-    if (parentActivity != null && !cancel.get()) {
-        AlertUtil.showTransFailedDialog(
-            parentActivity,
-            error is UnsupportedOperationException,
-            error.message ?: error.javaClass.simpleName
-        ) {
-            translateMessages(target, messages)
-        }
+    val activity = parentActivity ?: return
+    AlertUtil.showTransFailedDialog(
+        activity,
+        error is UnsupportedOperationException,
+        error.message ?: error.javaClass.simpleName
+    ) {
+        translateMessages(target, messages)
+    }
+}
+
+/** The rich text of a plain (non poll) message, or null when there is nothing to translate. */
+private fun MessageObject.textSource(): TLRPC.TL_textWithEntities? {
+    val text = messageOwner.message?.takeIf { it.isNotBlank() } ?: return null
+    return TLRPC.TL_textWithEntities().also {
+        it.text = text
+        it.entities = messageOwner.entities
     }
 }

@@ -39,8 +39,10 @@ public class NekoXConfig {
 //            1299578049, // NekoX Chat Channel
 //            1137038259, // NekoX APKs
             1500637449, // Nagram
-            1645699549, // Nagram Updates
+            4420879796L, // Nagram Wishes/Reports
+            1645699549, // Nagram Channel
             2001739482, // Nagram Tips
+            4430210277L, // Nagram Assets
     };
 
     public static long[] developers = {
@@ -49,11 +51,17 @@ public class NekoXConfig {
             784901712, // NextAlone
             457896977, // Queally
             782954985, // MaiTungTM
-            5412523572L, //blxueya
-            676660002, // mrwangzhe
+            1711019015,  // Lagrio
+            554072292,  // NahidaBuer
+            5412523572L, // blxueya
+            676660002, // xtao
             1068402676, // Kitsune
             6244360706L, // Sevtinge
+            625965913,   // YuKongA
             5382987111L,  // miaoqiqi
+            5555116287L,  // Natu
+            387785790,    // waifucon
+            812417693,  // lutit
     };
 
     public static final int TITLE_TYPE_TEXT = 0;
@@ -192,6 +200,7 @@ public class NekoXConfig {
 
     public static int getNotificationColor() {
         int color = 0;
+        if (NaConfig.INSTANCE.getUseSystemNotificationColor().Bool()) return color;
         Configuration configuration = ApplicationLoader.applicationContext.getResources().getConfiguration();
         boolean isDark = (configuration.uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         if (isDark) {

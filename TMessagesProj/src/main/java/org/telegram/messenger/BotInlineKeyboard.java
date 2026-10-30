@@ -5,6 +5,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.StringRes;
 
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_keyboard;
 
 import java.util.ArrayList;
 
@@ -35,9 +36,9 @@ public class BotInlineKeyboard {
     }
 
     public static class ButtonBot extends Button {
-        public final TLRPC.KeyboardButton button;
+        public final TL_keyboard.KeyboardInlineButton button;
 
-        public ButtonBot(TLRPC.KeyboardButton button) {
+        public ButtonBot(TL_keyboard.KeyboardInlineButton button) {
             this.button = button;
         }
 
@@ -74,6 +75,8 @@ public class BotInlineKeyboard {
         public static final int OPEN_MESSAGE_THREAD = 4;
         public static final int GIFT_OFFER_DECLINE = 5;
         public static final int GIFT_OFFER_ACCEPT = 6;
+        public static final int SHARING_OFFER_DECLINE = 7;
+        public static final int SHARING_OFFER_ACCEPT = 8;
 
         public final int id;
         public final @DrawableRes int icon;
@@ -142,7 +145,7 @@ public class BotInlineKeyboard {
 
         public void addBotKeyboard(TLRPC.TL_replyInlineMarkup replyInlineMarkup) {
             for (int a = 0; a < replyInlineMarkup.rows.size(); a++) {
-                ArrayList<TLRPC.KeyboardButton> row = replyInlineMarkup.rows.get(a).buttons;
+                ArrayList<TL_keyboard.KeyboardInlineButton> row = replyInlineMarkup.rows.get(a).buttons;
                 ButtonBot[] arr = new ButtonBot[row.size()];
                 for (int b = 0; b < row.size(); b++) {
                     arr[b] = new ButtonBot(row.get(b));
@@ -165,6 +168,13 @@ public class BotInlineKeyboard {
             buttons.add(new Button[]{
                 new ButtonCustom(ButtonCustom.GIFT_OFFER_DECLINE, R.string.GiftOfferDecline, R.drawable.filled_bot_decline_24),
                 new ButtonCustom(ButtonCustom.GIFT_OFFER_ACCEPT, R.string.GiftOfferAccept, R.drawable.filled_bot_approve_24),
+            });
+        }
+
+        public void addSharingOfferKeyboard() {
+            buttons.add(new Button[]{
+                new ButtonCustom(ButtonCustom.SHARING_OFFER_DECLINE, R.string.DisableSharingOfferDecline, R.drawable.filled_bot_decline_24),
+                new ButtonCustom(ButtonCustom.SHARING_OFFER_ACCEPT, R.string.DisableSharingOfferAccept, R.drawable.filled_bot_approve_24),
             });
         }
 

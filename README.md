@@ -1,15 +1,25 @@
 # Nagram
 
-Nagram is a third-party Telegram client based on [NekoX](https://github.com/NekoX-Dev/NekoX) with some modifications.
+Nagram is a third-party Telegram client based on [NekoX](https://web.archive.org/web/20240306062834/https://github.com/NekoX-Dev/NekoX) with some modifications.
 
-- Official Site: <https://nextalone.xyz>
-- Telegram Update Channel: <https://t.me/nagram_channel>
+- Official Site: <https://nagram.app>
+- Channel: <https://t.me/nagram_channel>
+- Assets: <https://t.me/nagram_assets>
 - Releases: <https://github.com/NextAlone/Nagram/releases>
-- Issues here: <https://github.com/NextAlone/Nagram/issues>
+- Issues here: <https://t.me/na_gram_reports/18>
+
+## Branding
+
+Nagram's source code is licensed under GPLv3. The Nagram name and project
+identity belong to [@NextAlone](https://github.com/NextAlone); the Nagram
+application icon artwork is copyright © MaitungTM. These are separate brand
+assets. Modified, forked, and third-party distributions must use distinct
+branding and replace the Nagram brand assets. See [BRANDING.md](BRANDING.md)
+for the complete policy.
 
 ## Additional feature over Nagram
 
-1. Nice icon (thanks to MaitungTM)
+1. Nice icon (copyright © MaitungTM)
 2. Combine message
 3. Editable text style 
 4. Forced copy
@@ -38,7 +48,7 @@ Nagram is a third-party Telegram client based on [NekoX](https://github.com/Neko
     - Proxy automatic switcher
     - Don't alert "Proxy unavailable" for non-current account
 - **Stickers**
-    - Custom [Emoji packs](https://github.com/NekoX-Dev/NekoX/wiki/emoji)
+    - Custom [Emoji packs](https://web.archive.org/web/20221126140435/https://github.com/NekoX-Dev/NekoX/wiki/emoji)
     - Add stickers without sticker pack
     - Sticker set list backup / restore / share
 - **Internationalization**
@@ -117,13 +127,13 @@ Environment:
   xcode-select --install # install developer tools (will open confirm dialog)
   brew install go cmake ninja yasm # install other tools by homebrew
   ```
-- Android SDK: `build-tools;33.0.0` `platforms;android-33` `ndk;21.4.7075529` `cmake;3.18.1` `cmake;3.22.1` (the default location is **$HOME/Android/SDK**, otherwise you need to specify **$ANDROID_HOME** for it)
+- Android SDK: `build-tools;33.0.0` `platforms;android-33` `ndk;27.2.12479018` `cmake;3.18.1` `cmake;3.22.1` (the default location is **$HOME/Android/SDK**, otherwise you need to specify **$ANDROID_HOME** for it)
 
   It is recommended to use [Android Studio](https://developer.android.com/studio) to install, but you can also use `sdkmanager` command on distributions based on Debian:
 
   ```shell
   sudo apt install sdkmanager
-  sdkmanager --sdk_root $HOME/Android/SDK --install "build-tools;33.0.0" "platforms;android-33" "ndk;21.4.7075529" "cmake;3.18.1" "cmake;3.22.1"
+  sdkmanager --sdk_root $HOME/Android/SDK --install "build-tools;33.0.0" "platforms;android-33" "ndk;27.2.12479018" "cmake;3.18.1" "cmake;3.22.1"
   ```
 
 Build: 
@@ -134,13 +144,16 @@ Build:
    git submodule update --init --recursive
    ```
 
-2. Build native dependencies:
-   ```shell
-   ./run init libs
+2. Disable signature check by removing the following lines in **TMessagesProj/jni/jni.c**:
+   ```c
+    if (verifySign(env) != JNI_OK) {
+        return JNI_ERR;
+    }
    ```
 
 3. Build external libraries and native code: 
    ```shell
+   ./run init libs
    ./run libs native
    ```
 
@@ -155,8 +168,6 @@ Build:
    ```shell
    ./gradlew assemble<Release/Debug>
    ```
-
-8. Generate `TMessagesProj/jni/integrity/genuine.h` - https://github.com/brevent/genuine
 
 ----
 
@@ -185,12 +196,21 @@ Then, use base64 to encode the above.
 3. Add Repo Action Secrets
 
 - LOCAL_PROPERTIES: from step 2
-- HELPER_BOT_TOKEN: from telegram [@Botfather](https://t.me/Botfather), such as `1111:abcd`
-- HELPER_BOT_TARGET: from telegram chat id, such as `777000`
+- HELPER_BOT_TOKEN: from telegram [@Botfather](https://t.me/Botfather), such as `1111:abcd`; the bot that keeps the in-app update metadata
+- NAGRAM_CHANNEL_BOT_TOKEN, NAGRAM_API_ID, NAGRAM_API_HASH: the bot that posts the builds to the channels, and the Telegram API credentials its Bot API server runs with
 
-4. Run Release Build
+   The channels are repository variables: NAGRAM_CHANNEL_ASSETS_CHAT_ID gets every build, NAGRAM_CHANNEL_CHAT_ID gets a copy of the releases. Nothing is posted while the token or the channels are not set. A release needs its notes in `docs/releases/<version code>.md`, with optional English notes in `<version code>.en.md`.
 
-5. Generate `TMessagesProj/jni/integrity/genuine.h` - https://github.com/brevent/genuine
+   The GitLab pipeline posts to its own channel instead, with the HELPER_BOT_TARGET CI/CD variable holding the chat id, such as `-1001234567890`.
+
+4. Disable signature check by removing the following lines in **TMessagesProj/jni/jni.c**:
+   ```c
+    if (verifySign(env) != JNI_OK) {
+        return JNI_ERR;
+    }
+   ```
+
+5. Run Release Build
 
 ## FAQ
 
@@ -198,17 +218,13 @@ Then, use base64 to encode the above.
 
 Developed by different developers, read the feature list above to understand the differences.
 
-#### What is the noGcm version?
-
-Google Cloud Messaging, also known as gcm / fcm, message push service by google used by original Telegram android app, it requires your device to have Google Service Framework (non-free) installed.
-
 #### I've encountered a bug!
 
 First, make sure you have the latest version installed (check the channel).
 
-Then, if the issue appears in the official Telegram client too, please submit it to the officials, (be careful not to show NekoX in the description and screenshots, the official developers doesn't like us!).
+Then, if the issue appears in the official Telegram client too, please submit it to the officials, (be careful not to show custom clients in the description and screenshots).
 
-Then, submit it to our [group](https://t.me/nagram_group) with #bug.
+Then, submit it to our [bot](https://t.me/OrIssuesBot).
 
 If you experience a *crash*, you also need to click on the version number at the bottom of the settings and select "Enable Log" and send it to us.
 
@@ -222,10 +238,9 @@ Is Nagram not in your language, or the translation is incorrect or incomplete? G
 
 ## Thanks
 
-- [NekoX](https://github.com/NekoX-Dev/NekoX)
+- [NekoX](https://web.archive.org/web/20240306062834/https://github.com/NekoX-Dev/NekoX)
 - [Nekogram](https://gitlab.com/Nekogram/Nekogram)
 - [Pigeongram](https://gitlab.com/JasonKhew96/Nekogram)
 - [Nullgram](https://github.com/qwq233/Nullgram)
 - [TeleTux](https://github.com/TeleTux/TeleTux)
 - [OwlGram](https://github.com/OwlGramDev/OwlGram)
-

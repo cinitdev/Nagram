@@ -17,11 +17,10 @@ import androidx.annotation.RequiresApi;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.blur3.LiquidGlassEffect;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
 
 @RequiresApi(api = Build.VERSION_CODES.Q)
 public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawable {
-    private final BlurredBackgroundSourceRenderNode source;
+    private final BlurredBackgroundSource source;
     private final Outline outline = new Outline();
     private final Rect outlineRect = new Rect();
 
@@ -34,7 +33,7 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
 
     private boolean renderNodeInvalidated;
 
-    public BlurredBackgroundDrawableRenderNode(BlurredBackgroundSourceRenderNode source) {
+    public BlurredBackgroundDrawableRenderNode(BlurredBackgroundSource source) {
         this.renderNode = new RenderNode("BlurredNode");
         this.renderNodeFill = new RenderNode("BlurredFill");
         this.renderNode.setClipToOutline(true);
@@ -48,9 +47,9 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
     }
 
     @Override
-    public void setClipToOutline(boolean clipToOutline) {
-        super.setClipToOutline(clipToOutline);
+    public BlurredBackgroundDrawable setClipToOutline(boolean clipToOutline) {
         renderNode.setClipToOutline(clipToOutline);
+        return super.setClipToOutline(clipToOutline);
     }
 
     private LiquidGlassEffect liquidGlassEffect;
@@ -95,11 +94,13 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         renderNodeInvalidated = true;
     }
 
+    @Override
     public boolean hasDisplayList() {
         return renderNode.hasDisplayList();
     }
 
-    private void updateDisplayList() {
+    @Override
+    public void updateDisplayList() {
         final float offsetX = sourceOffsetX;
         final float offsetY = sourceOffsetY;
 
@@ -114,17 +115,21 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         c.save();
         c.translate(-sL, -sT);
         if (liquidGlassEffect != null && Build.VERSION.SDK_INT >= 33) {
+            final int thickness = Math.max(Math.min(
+                boundProps.liquidThickness <= 0 ? dp(11) : boundProps.liquidThickness,
+                Math.min(boundProps.boundsWithPadding.width(), boundProps.boundsWithPadding.height()) / 5), 1);
+
             liquidGlassEffect.update(
                 0, 0, boundProps.boundsWithPadding.width(), boundProps.boundsWithPadding.height(),
                 boundProps.shaderRadii[0], boundProps.shaderRadii[2], boundProps.shaderRadii[4], boundProps.shaderRadii[6],
-                boundProps.liquidThickness <= 0 ? dp(11) : boundProps.liquidThickness,
+                thickness,
                 boundProps.liquidIntensity,
                 boundProps.liquidIndex,
                 backgroundColor
             );
         }
         source.draw(c, sL, sT, sR, sB);
-        c.restore();
+        c.save();
         renderNodeFill.endRecording();
 
 
@@ -180,7 +185,7 @@ public class BlurredBackgroundDrawableRenderNode extends BlurredBackgroundDrawab
         }
         renderNodeInvalidated = false;
 
-        int color = Theme.multAlpha(shadowColor, renderNode.getAlpha());
+        int color = Theme.multAlpha(shadowColor, renderNode.getAlpha() * shadowAlpha);
         if (Color.alpha(color) != 0) {
             paintShadow.setShadowLayer(shadowLayerRadius, shadowLayerDx, shadowLayerDy, color);
             boundProps.drawShadows(canvas, paintShadow, inAppKeyboardOptimization);

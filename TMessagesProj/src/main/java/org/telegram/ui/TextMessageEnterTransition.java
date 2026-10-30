@@ -28,12 +28,11 @@ import android.text.SpannableString;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.View;
 import android.view.animation.LinearInterpolator;
 
 import androidx.core.graphics.ColorUtils;
-import androidx.recyclerview.widget.ChatListItemAnimator;
+import org.telegram.ui.recyclerview.ChatListItemAnimator;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
@@ -42,6 +41,7 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.MessageDrawable;
 import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.ChatMessageCell;
@@ -408,7 +408,7 @@ public class TextMessageEnterTransition implements MessageEnterTransitionContain
         });
 
         if (SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_HIGH) {
-            Theme.MessageDrawable drawable = messageView.getCurrentBackgroundDrawable(true);
+            MessageDrawable drawable = messageView.getCurrentBackgroundDrawable(true);
             if (drawable != null) {
                 fromMessageDrawable = drawable.getTransitionDrawable(getThemedColor(Theme.key_chat_messagePanelBackground));
             }
@@ -493,7 +493,7 @@ public class TextMessageEnterTransition implements MessageEnterTransitionContain
         float drawableH = messageView.getBackgroundDrawableBottom() - messageView.getBackgroundDrawableTop();
         float drawableBottom = (drawableFromBottom - container.getY()) * (1f - progress) + (drawableToTop + drawableH) * progress;
         int drawableRight = (int) (messageViewX + messageView.getBackgroundDrawableRight() + dp(4) * (1f - progressX));
-        Theme.MessageDrawable drawable = null;
+        MessageDrawable drawable = null;
         if (!currentMessageObject.isAnimatedEmojiStickers()) {
             drawable = messageView.getCurrentBackgroundDrawable(true);
         }
@@ -717,7 +717,7 @@ public class TextMessageEnterTransition implements MessageEnterTransitionContain
                 if (messageView.needReplyImage && (!messageView.isReplyQuote || messageView.replyTextRTL)) {
                     left += replyImageSz + dp(3);
                 }
-                if (messageView.isReplyTask && messageView.replyTaskCheckbox != null) {
+                if (messageView.isReplyTaskOrPollOption && messageView.replyTaskCheckbox != null) {
                     final float x = lerp(fromReplayX - messageView.replyTextOffset, left, progressX);
                     final int sz = 12;
                     messageView.replyTaskCheckbox.setBounds((int) x, (int) top + dp(2), dp(sz), dp(sz));
@@ -727,7 +727,7 @@ public class TextMessageEnterTransition implements MessageEnterTransitionContain
                     messageView.replyTaskCheckbox.setAlpha(progress);
                     messageView.replyTaskCheckbox.draw(canvas);
                 }
-                if (messageView.isReplyTask) {
+                if (messageView.isReplyTaskOrPollOption) {
                     left += dp(16);
                 }
                 if (messageView.replyTextRTL && messageView.replyTextOffset > 0) {

@@ -13,94 +13,9 @@ on:
         description: 'Upload: If want ignore'
         required: false
 jobs:
-  ffmpeg:
-    name: Native Build (FFmpeg)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Fetch Status
-        run: |
-          sed -i 's/\/\///g' settings.gradle
-          git submodule status TMessagesProj/jni/ffmpeg > ffmpeg_status
-          git submodule status TMessagesProj/jni/libvpx > libvpx_status
-      - name: FFmpeg Cache
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            TMessagesProj/jni/ffmpeg/build
-            TMessagesProj/jni/libvpx/build
-          key: ${{ hashFiles('ffmpeg_status', 'libvpx_status', 'TMessagesProj/jni/*ffmpeg*.sh', 'TMessagesProj/jni/*libvpx*.sh', 'TMessagesProj/jni/patches/ffmpeg/*') }}
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        if: steps.cache.outputs.cache-hit != 'true'
-        with:
-          python-version: '3.12'
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        if: steps.cache.outputs.cache-hit != 'true'
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Setup Android SDK Tools
-        uses: android-actions/setup-android@v3
-        if: steps.cache.outputs.cache-hit != 'true'
-      - name: Install NDK
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          echo "y" | sdkmanager --install "ndk;21.4.7075529" --sdk_root=${ANDROID_SDK_ROOT} &> /dev/null
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          echo "ndk.dir=${ANDROID_HOME}/ndk/21.4.7075529" >> local.properties
-      - name: Native Build
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          ./run init action ffmpeg
-          ./run init libs libvpx
-          ./run init libs ffmpeg
-  boringssl:
-    name: Native Build (BoringSSL)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Fetch Status
-        run: |
-          sed -i 's/\/\///g' settings.gradle
-          git submodule status TMessagesProj/jni/boringssl > boringssl_status
-      - name: BoringSSL Cache
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            TMessagesProj/jni/boringssl/build
-          key: ${{ hashFiles('boringssl_status') }}
-      - name: Set up JDK 17
-        uses: actions/setup-java@v3
-        if: steps.cache.outputs.cache-hit != 'true'
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-      - name: Setup Android SDK Tools
-        uses: android-actions/setup-android@v3
-        if: steps.cache.outputs.cache-hit != 'true'
-      - name: Install NDK
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          echo "y" | sdkmanager --install "ndk;21.4.7075529" --sdk_root=${ANDROID_SDK_ROOT} &> /dev/null
-          echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          echo "ndk.dir=${ANDROID_HOME}/ndk/21.4.7075529" >> local.properties
-      - name: Native Build
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          ./run init action boringssl
-          ./run init libs boringssl
   native:
     name: Native Build (Telegram)
     runs-on: ubuntu-latest
-    needs:
-      - ffmpeg
-      - boringssl
     strategy:
       matrix:
         flavor:
@@ -108,63 +23,43 @@ jobs:
           - arm64-v8a
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Fetch Status
         run: |
           sed -i 's/\/\///g' settings.gradle
-          git submodule status TMessagesProj/jni/ffmpeg > ffmpeg_status
-          git submodule status TMessagesProj/jni/libvpx > libvpx_status
-          git submodule status TMessagesProj/jni/boringssl > boringssl_status
       - name: Native Cache
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             TMessagesProj/src/main/libs
-          key: ${{ hashFiles('TMessagesProj/jni/**', 'ffmpeg_status', 'boringssl_status') }}-${{ matrix.flavor }}
+          key: ${{ hashFiles('TMessagesProj/jni/**') }}-${{ matrix.flavor }}
       - name: Checkout Library
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          git submodule update --init 'TMessagesProj/jni/*'
-      - name: FFmpeg Cache
-        uses: actions/cache@v4
-        if: steps.cache.outputs.cache-hit != 'true'
-        with:
-          path: |
-            TMessagesProj/jni/ffmpeg/build
-            TMessagesProj/jni/libvpx/build
-          key: ${{ hashFiles('ffmpeg_status', 'libvpx_status', 'TMessagesProj/jni/*ffmpeg*.sh', 'TMessagesProj/jni/*libvpx*.sh', 'TMessagesProj/jni/patches/ffmpeg/*') }}
-      - name: BoringSSL Cache
-        uses: actions/cache@v4
-        if: steps.cache.outputs.cache-hit != 'true'
-        with:
-          path: |
-            TMessagesProj/jni/boringssl/build
-          key: ${{ hashFiles('boringssl_status') }}
+          git submodule update --init
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v6
         if: steps.cache.outputs.cache-hit != 'true'
         with:
           java-version: '17'
           distribution: 'temurin'
       - name: Setup Android SDK Tools
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
         if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          packages: 'platform-tools'
       - name: Install NDK
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          echo "y" | sdkmanager --install "ndk;21.4.7075529" --sdk_root=${ANDROID_SDK_ROOT} &> /dev/null
+          echo "y" | sdkmanager --install "ndk;27.2.12479018" --sdk_root=${ANDROID_SDK_ROOT} &> /dev/null
           echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          echo "ndk.dir=${ANDROID_HOME}/ndk/21.4.7075529" >> local.properties
-      - name: Fix BoringSSL
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          cd TMessagesProj/jni
-          ./patch_boringssl.sh
+          echo "ndk.dir=${ANDROID_HOME}/ndk/27.2.12479018" >> local.properties
       - name: Native Build
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           export NATIVE_TARGET="${{ matrix.flavor }}"
+          ./run init libs
           ./run libs native
   build:
     name: Gradle Build
@@ -173,96 +68,160 @@ jobs:
       - native
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+      - name: Fetch Status
+        run: |
+          sed -i 's/\/\///g' settings.gradle
+      - name: Native Cache (armeabi-v7a)
+        uses: actions/cache@v6
+        with:
+          path: |
+            TMessagesProj/src/main/libs
+          key: ${{ hashFiles('TMessagesProj/jni/**') }}-armeabi-v7a
+      - name: Native Cache (arm64-v8a)
+        uses: actions/cache@v6
+        with:
+          path: |
+            TMessagesProj/src/main/libs
+          key: ${{ hashFiles('TMessagesProj/jni/**') }}-arm64-v8a
+      - name: Checkout Library
+        run: |
+          git submodule update --init
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v6
         with:
           java-version: '17'
           distribution: 'temurin'
       - name: Setup Android SDK Tools
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
       - name: Install NDK
         run: |
-          echo "y" | sdkmanager --install "ndk;21.4.7075529" --sdk_root=${ANDROID_SDK_ROOT} &> /dev/null
+          echo "y" | sdkmanager --install "ndk;27.2.12479018" --sdk_root=${ANDROID_SDK_ROOT} &> /dev/null
           echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          echo "ndk.dir=${ANDROID_HOME}/ndk/21.4.7075529" >> local.properties
-      - name: Fetch Status
-        run: |
-          sed -i 's/\/\///g' settings.gradle
-          git submodule status TMessagesProj/jni/ffmpeg > ffmpeg_status
-          git submodule status TMessagesProj/jni/boringssl > boringssl_status
-      - name: Native Cache (armeabi-v7a)
-        uses: actions/cache@v4
-        with:
-          path: |
-            TMessagesProj/src/main/libs
-          key: ${{ hashFiles('TMessagesProj/jni/**', 'ffmpeg_status', 'boringssl_status') }}-armeabi-v7a
-      - name: Native Cache (arm64-v8a)
-        uses: actions/cache@v4
-        with:
-          path: |
-            TMessagesProj/src/main/libs
-          key: ${{ hashFiles('TMessagesProj/jni/**', 'ffmpeg_status', 'boringssl_status') }}-arm64-v8a
+          echo "ndk.dir=${ANDROID_HOME}/ndk/27.2.12479018" >> local.properties
       - name: Configure Gradle
         run: |
-          sed -i "s/2000000000000/$(date +%s%3N)/g" gradle.properties
+          sed -i "s/2000000000000/$(date +%s%N | cut -c1-13)/g" gradle.properties
           echo "sdk.dir=${ANDROID_HOME}" >> local.properties
-      - name: Gradle cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle
-          key: gradle-${{ hashFiles('**/*.gradle') }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
       - name: Release Build
         run: |
           export LOCAL_PROPERTIES="${{ secrets.LOCAL_PROPERTIES }}"
-          ./gradlew TMessagesProj:assembleRelease
+          export SENTRY_AUTH_TOKEN="${{ secrets.SENTRY_AUTH_TOKEN }}"
+          ./gradlew TMessagesProj:assembleRelease --build-cache --no-configuration-cache
 
           APK=$(find TMessagesProj/build/outputs/apk -name '*arm64-v8a*.apk')
           APK=$(dirname $APK)
           echo "APK=$APK" >> $GITHUB_ENV
       - name: Upload gradle.properties
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gradle-properties
           path: gradle.properties
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Release
           path: ${{ env.APK }}
   upload:
     name: Upload release
     if: github.event.inputs.upload != 'y'
-    runs-on: ubuntu-latest
+    # The channel-publish action runs a Bot API server built on this system.
+    runs-on: ubuntu-24.04
     needs:
       - build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Remove gradle.properties
         run: |
           rm -f gradle.properties
       - name: Download gradle.properties
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: gradle-properties
           path: .
       - name: Donwload Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: 3.12
-      - name: Send to Telegram
+      - name: Prepare channel post
+        id: post
+        env:
+          BOT_TOKEN: ${{ secrets.NAGRAM_CHANNEL_BOT_TOKEN }}
+          ASSETS_CHAT_ID: ${{ vars.NAGRAM_CHANNEL_ASSETS_CHAT_ID }}
+          OFFICIAL_CHAT_ID: ${{ vars.NAGRAM_CHANNEL_CHAT_ID }}
         run: |
-          # send release via telegram bot api
-          export mini64=$(find artifacts -name "*arm64-v8a.apk")
-          export mini32=$(find artifacts -name "*armeabi-v7a.apk")
-
-          echo $mini64
-          echo $mini32
-
+          if [ -z "$BOT_TOKEN" ] || [ -z "$ASSETS_CHAT_ID$OFFICIAL_CHAT_ID" ]; then
+            echo "::notice::NAGRAM_CHANNEL_BOT_TOKEN or both channels are not set, nothing is posted."
+            exit 0
+          fi
+          mkdir "$RUNNER_TEMP/channel"
+          find artifacts \( -name '*arm64-v8a.apk' -o -name '*armeabi-v7a.apk' \) \
+            -exec cp {} "$RUNNER_TEMP/channel/" \;
+          ls -l "$RUNNER_TEMP/channel"
+          python bin/scripts/apk_version.py "$RUNNER_TEMP"/channel/*arm64-v8a.apk > "$RUNNER_TEMP/apk-version"
+          cat "$RUNNER_TEMP/apk-version" >> "$GITHUB_OUTPUT"
+          BUILD="$(sed -n 's/^build=//p' "$RUNNER_TEMP/apk-version")"
+          # Every release has its notes, named after the version code.
+          NOTES="docs/releases/$BUILD.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::$NOTES is missing, the release is not posted."
+            exit 1
+          fi
+          # English notes are optional and are folded under the others.
+          NOTES_EN="docs/releases/$BUILD.en.md"
+          if [ ! -f "$NOTES_EN" ]; then
+            NOTES_EN=""
+          fi
+          # The files are sent to the assets channel and the official one
+          # gets a copy of the post; with one channel set, it gets the post.
+          CHAT_ID="${ASSETS_CHAT_ID:-$OFFICIAL_CHAT_ID}"
+          COPY_TO=""
+          if [ -n "$ASSETS_CHAT_ID" ] && [ "$OFFICIAL_CHAT_ID" != "$ASSETS_CHAT_ID" ]; then
+            COPY_TO="$OFFICIAL_CHAT_ID"
+          fi
+          {
+            echo "chat=$CHAT_ID"
+            echo "copy=$COPY_TO"
+            echo "notes=$NOTES"
+            echo "notes_en=$NOTES_EN"
+          } >> "$GITHUB_OUTPUT"
+      # The in-app updater reads the APKs and their JSON from the metadata
+      # channel, whatever is posted to the channels below.
+      - name: Update metadata
+        env:
+          HELPER_BOT_TOKEN: ${{ secrets.HELPER_BOT_TOKEN }}
+        run: |
           python -m pip install -r bin/scripts/requirements.txt
-          git log -1 --pretty=format:"%s%n%n%b" > artifacts/caption.txt
-          python bin/scripts/upload.py ${{ secrets.HELPER_BOT_TOKEN }} ${{ secrets.HELPER_BOT_TARGET }} release
+          python bin/scripts/upload.py "$HELPER_BOT_TOKEN"
+      - name: Post to channels
+        if: steps.post.outputs.chat != ''
+        uses: NextAlone/NagramActionRelated/channel-publish@2b74e4cd4e3c89fcc9d50095c039e467c674661f
+        with:
+          bot-token: ${{ secrets.NAGRAM_CHANNEL_BOT_TOKEN }}
+          api-id: ${{ secrets.NAGRAM_API_ID }}
+          api-hash: ${{ secrets.NAGRAM_API_HASH }}
+          chat-id: ${{ steps.post.outputs.chat }}
+          copy-to: ${{ steps.post.outputs.copy }}
+          directory: ${{ runner.temp }}/channel
+          title: Nagram
+          version: ${{ steps.post.outputs.version }}
+          build: ${{ steps.post.outputs.build }}
+          hashtags: android release
+          notes-file: ${{ steps.post.outputs.notes }}
+          notes-en-file: ${{ steps.post.outputs.notes_en }}
+          files-title: 下载
+          files: |
+            *arm64-v8a.apk | arm64-v8a · 大多数设备
+            *armeabi-v7a.apk | armeabi-v7a · 旧设备
+          # The release is tagged with the version code.
+          buttons: |
+            *GitHub Release=${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ steps.post.outputs.build }}
+            问题反馈=https://t.me/OrIssuesBot | Assets={post}

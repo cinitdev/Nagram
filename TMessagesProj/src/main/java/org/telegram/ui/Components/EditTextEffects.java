@@ -13,15 +13,13 @@ import android.os.Looper;
 import android.text.Editable;
 import android.text.Layout;
 import android.text.Spannable;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.MotionEvent;
 import android.widget.EditText;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
-import org.telegram.ui.ActionBar.Theme;
+import org.telegram.messenger.R;
 import org.telegram.ui.Components.spoilers.SpoilerEffect;
 import org.telegram.ui.Components.spoilers.SpoilersClickDetector;
 
@@ -29,7 +27,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Stack;
 
+import xyz.nextalone.nagram.helper.ColorOsHelper;
+import xyz.nextalone.nagram.ui.Components.InputTextAnimation;
+
 public class EditTextEffects extends EditText {
+    private InputTextAnimation inputTextAnimation;
+    private boolean inputAnimationSuppressed;
     private final static int SPOILER_TIMEOUT = 10000;
 
     private List<SpoilerEffect> spoilers = new ArrayList<>();
@@ -68,7 +71,9 @@ public class EditTextEffects extends EditText {
     private boolean clipToPadding;
 
     public EditTextEffects(Context context) {
-        super(context);
+        super(context, null, 0, R.style.EditTextNoBackgroundStyle);
+        inputTextAnimation = new InputTextAnimation(this);
+        super.addTextChangedListener(inputTextAnimation);
 
         if (Looper.getMainLooper().getThread() == Thread.currentThread()) {
             clickDetector = new SpoilersClickDetector(this, spoilers, this::onSpoilerClicked);
@@ -139,6 +144,7 @@ public class EditTextEffects extends EditText {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        inputTextAnimation.clear();
 
         removeCallbacks(spoilerTimeout);
         AnimatedEmojiSpan.release(this, animatedEmojiDrawables);
@@ -204,6 +210,22 @@ public class EditTextEffects extends EditText {
                 spoilersPool.clear();
         }
         super.setText(text, type);
+    }
+
+    /** Programmatic replacement (for example, after sending), preserving business callbacks. */
+    public final void setTextWithoutInputAnimation(CharSequence text) {
+        boolean wasSuppressed = inputAnimationSuppressed;
+        inputAnimationSuppressed = true;
+        inputTextAnimation.clear();
+        try {
+            setText(text);
+        } finally {
+            inputAnimationSuppressed = wasSuppressed;
+        }
+    }
+
+    public final boolean isInputAnimationSuppressed() {
+        return inputAnimationSuppressed;
     }
 
     private int lastTextColor;
@@ -295,7 +317,8 @@ public class EditTextEffects extends EditText {
                 !Build.MANUFACTURER.toLowerCase().contains("honor") &&
                 !Build.MANUFACTURER.toLowerCase().contains("huawei") &&
                 !Build.MANUFACTURER.toLowerCase().contains("alps") &&
-                !Build.MANUFACTURER.toLowerCase().contains("vivo")
+                !Build.MANUFACTURER.toLowerCase().contains("vivo") &&
+                !ColorOsHelper.INSTANCE.isColorOS()
             ) && (
                 Build.MODEL == null ||
                 !Build.MODEL.toLowerCase().contains("mediapad")
@@ -309,16 +332,40 @@ public class EditTextEffects extends EditText {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        boolean wrap = !(this instanceof EditTextBoldCursor);
+        if (wrap) beginInputAnimation(canvas);
+        drawInputContent(canvas);
+        if (wrap) endInputAnimation(canvas);
+    }
+
+    public final void beginInputAnimation(Canvas canvas) {
+        inputTextAnimation.beforeDraw(canvas);
+    }
+
+    public boolean animateInputWithoutFocus() {
+        return false;
+    }
+
+    public final void endInputAnimation(Canvas canvas) {
+        inputTextAnimation.afterDraw(canvas);
+    }
+
+    private void drawInputContent(Canvas canvas) {
         canvas.save();
         if (clipToPadding && getScrollY() != 0) {
             canvas.clipRect(-AndroidUtilities.dp(3), getScrollY() - super.getExtendedPaddingTop() - offsetY, getMeasuredWidth(), getMeasuredHeight() + getScrollY() + super.getExtendedPaddingBottom() - offsetY);
         }
-        path.rewind();
-        for (SpoilerEffect eff : spoilers) {
-            Rect bounds = eff.getBounds();
-            path.addRect(bounds.left, bounds.top, bounds.right, bounds.bottom, Path.Direction.CW);
+
+        final int spoilerPaddingLeft = getPaddingLeft();
+        if (!spoilers.isEmpty()) {
+            path.rewind();
+            for (SpoilerEffect eff : spoilers) {
+                Rect bounds = eff.getBounds();
+                path.addRect(bounds.left + spoilerPaddingLeft, bounds.top, bounds.right + spoilerPaddingLeft, bounds.bottom, Path.Direction.CW);
+            }
+            canvas.clipPath(path, Region.Op.DIFFERENCE);
         }
-        canvas.clipPath(path, Region.Op.DIFFERENCE);
+
         invalidateQuotes(false);
         for (int i = 0; i < quoteBlocks.size(); ++i) {
             quoteBlocks.get(i).draw(canvas, 0, getWidth(), quoteColor, 1f, getPaint());
@@ -341,35 +388,40 @@ public class EditTextEffects extends EditText {
         }
         canvas.restore();
 
-        canvas.save();
-        canvas.clipPath(path);
-        path.rewind();
-        if (!spoilers.isEmpty())
-            spoilers.get(0).getRipplePath(path);
-        canvas.clipPath(path);
-        canvas.translate(0, -getPaddingTop());
-        if (wrapCanvasToFixClipping) {
-            if (wrappedCanvas == null) {
-                wrappedCanvas = new NoClipCanvas();
-            }
-            wrappedCanvas.canvas = canvas;
-            super.onDraw(wrappedCanvas);
-        } else {
-            super.onDraw(canvas);
-        }
-        canvas.restore();
+        if (!spoilers.isEmpty()) {
+            if (spoilers.get(0).hasRipplePath()) {
+                canvas.save();
+                canvas.clipPath(path);
+                path.rewind();
 
-        rect.set(0, (int) (getScrollY() - super.getExtendedPaddingTop() - offsetY), getWidth(), (int) (getMeasuredHeight() + getScrollY() + super.getExtendedPaddingBottom() - offsetY));
-        canvas.save();
-        canvas.clipRect(rect);
-        for (SpoilerEffect eff : spoilers) {
-            Rect b = eff.getBounds();
-            if (rect.top <= b.bottom && rect.bottom >= b.top || b.top <= rect.bottom && b.bottom >= rect.top) {
-                eff.setColor(eff.insideQuote ? quoteColor : getPaint().getColor());
-                eff.draw(canvas);
+                spoilers.get(0).getRipplePath(path);
+                canvas.clipPath(path);
+                canvas.translate(0, -getPaddingTop());
+                if (wrapCanvasToFixClipping) {
+                    if (wrappedCanvas == null) {
+                        wrappedCanvas = new NoClipCanvas();
+                    }
+                    wrappedCanvas.canvas = canvas;
+                    super.onDraw(wrappedCanvas);
+                } else {
+                    super.onDraw(canvas);
+                }
+                canvas.restore();
             }
+
+            rect.set(0, (int) (getScrollY() - super.getExtendedPaddingTop() - offsetY), getWidth(), (int) (getMeasuredHeight() + getScrollY() + super.getExtendedPaddingBottom() - offsetY));
+            canvas.save();
+            canvas.clipRect(rect);
+            canvas.translate(spoilerPaddingLeft, 0);
+            for (SpoilerEffect eff : spoilers) {
+                Rect b = eff.getBounds();
+                if (rect.top <= b.bottom && rect.bottom >= b.top || b.top <= rect.bottom && b.bottom >= rect.top) {
+                    eff.setColor(eff.insideQuote ? quoteColor : getPaint().getColor());
+                    eff.draw(canvas);
+                }
+            }
+            canvas.restore();
         }
-        canvas.restore();
     }
 
     public void updateAnimatedEmoji(boolean force) {

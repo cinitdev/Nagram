@@ -15,11 +15,13 @@
 #include <fcntl.h>
 #include <memory.h>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
 #include <zlib.h>
 #include <memory>
 #include <string>
 #include <cinttypes>
 #include "ConnectionsManager.h"
+#include "DownloadRequestBudget.h"
 #include "FileLog.h"
 #include "EventObject.h"
 #include "MTProtoScheme.h"
@@ -37,8 +39,7 @@
 #ifdef ANDROID
 #include <jni.h>
 JavaVM *javaVm = nullptr;
-//JNIEnv *jniEnv[MAX_ACCOUNT_COUNT];
-std::vector<JNIEnv*> jniEnv(10);
+JNIEnv *jniEnv[MAX_ACCOUNT_COUNT] = {};
 jclass jclass_ByteBuffer = nullptr;
 jmethodID jclass_ByteBuffer_allocateDirect = nullptr;
 #endif
@@ -141,15 +142,18 @@ std::vector<ConnectionsManager*> ConnectionsManager::_instances = std::vector<Co
 ConnectionsManager& ConnectionsManager::getInstance(int32_t instanceNum) {
     static std::mutex _new_mutex;
 
-    if (instanceNum >= _instances.capacity()) {
+    std::lock_guard<std::mutex> lock(_new_mutex);
+
+    if (instanceNum < 0) {
+        instanceNum = 0;
+    }
+
+    if (instanceNum >= static_cast<int32_t>(_instances.size())) {
         _instances.resize(instanceNum + 10, nullptr);
     }
 
-    if(_instances[instanceNum] == nullptr) {
-        _new_mutex.lock();
-        if(_instances[instanceNum] == nullptr)
-            _instances[instanceNum] = new ConnectionsManager(instanceNum);
-        _new_mutex.unlock();
+    if (_instances[instanceNum] == nullptr) {
+        _instances[instanceNum] = new ConnectionsManager(instanceNum);
     }
     return *_instances[instanceNum];
 }
@@ -809,7 +813,8 @@ void ConnectionsManager::onConnectionConnected(Connection *connection) {
             if (networkPaused && lastPauseTime != 0) {
                 lastPauseTime = getCurrentTimeMonotonicMillis();
             }
-            processRequestQueue(connection->getConnectionType(), datacenter->getDatacenterId());
+            processRequestQueue(connectionType, datacenter->getDatacenterId(),
+                                connectionType == ConnectionTypeDownload ? connection : nullptr);
         }
     }
 }
@@ -1112,7 +1117,10 @@ void ConnectionsManager::processServerResponse(TLObject *message, int64_t messag
             for (auto & runningRequest : runningRequests) {
                 Request *request = runningRequest.get();
                 Datacenter *requestDatacenter = getDatacenterWithId(request->datacenterId);
-                if (request->messageId < response->first_msg_id && request->connectionType & connection->getConnectionType() && requestDatacenter != nullptr && requestDatacenter->getDatacenterId() == datacenter->getDatacenterId()) {
+                // A new download session says nothing about requests on sibling sockets.
+                bool sameDownloadConnection = connection->getConnectionType() != ConnectionTypeDownload ||
+                                              (request->connectionType >> 16) == connection->getConnectionNum();
+                if (sameDownloadConnection && request->messageId < response->first_msg_id && request->connectionType & connection->getConnectionType() && requestDatacenter != nullptr && requestDatacenter->getDatacenterId() == datacenter->getDatacenterId()) {
                     if (LOGS_ENABLED) DEBUG_D("clear request %p - %s", request->rawRequest, typeid(*request->rawRequest).name());
                     request->clear(true);
                 }
@@ -2438,7 +2446,12 @@ inline void addMessageToDatacenter(uint32_t datacenterId, NetworkMessage *networ
 #define MAX_DOWNLOAD_REQUESTS 16 * 2
 #define MAX_UPLOAD_REQUESTS 10 * 3
 
-void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t dc) {
+static uint32_t getDownloadSize(Request *request) {
+    auto apiRequest = dynamic_cast<TL_api_request *>(request->rawRequest);
+    return apiRequest != nullptr ? apiRequest->downloadSize : 0;
+}
+
+void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t dc, Connection *connectedDownload) {
     genericMessagesToDatacenters.clear();
     genericMediaMessagesToDatacenters.clear();
     tempMessagesToDatacenters.clear();
@@ -2577,7 +2590,10 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
 
         uint32_t requestConnectionType = request->connectionType & 0x0000ffff;
 
-        bool forceThisRequest = (connectionTypes & requestConnectionType) && requestDatacenter->getDatacenterId() == dc;
+        // Opening one download socket must not resend requests on its siblings.
+        // Salt/session recovery calls without a socket still apply to the whole DC.
+        bool forceThisRequest = (connectionTypes & requestConnectionType) && requestDatacenter->getDatacenterId() == dc &&
+                                (connectedDownload == nullptr || connection == connectedDownload);
 
         if (typeInfo == typeid(TL_get_future_salts)) {
             if (request->messageId != 0) {
@@ -2693,6 +2709,16 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
             }
         }
         iter++;
+    }
+
+    // Snapshot after retries/migrations, which can remove or requeue requests.
+    // No persistent reservations to leak on cancellation or DC changes.
+    DownloadRequestBudget downloadBudget(currentUserPremium);
+    for (const auto &request : runningRequests) {
+        if (!request->cancelled && (request->connectionType & 0xffff) == ConnectionTypeDownload) {
+            uint32_t datacenterId = request->datacenterId == DEFAULT_DATACENTER_ID ? currentDatacenterId : request->datacenterId;
+            downloadBudget.account(datacenterId, (request->requestFlags & RequestFlagSmallDownload) != 0, getDownloadSize(request.get()));
+        }
     }
 
     Connection *genericConnection = nullptr;
@@ -2821,7 +2847,9 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
 
         Connection *connection = requestDatacenter->getConnectionByType(request->connectionType, true, canUseUnboundKey);
 
-        if (request->connectionType & ConnectionTypeGeneric && connection->getConnectionToken() == 0) {
+        // Keep budgeted chunks queued until the socket is ready. Otherwise they
+        // are buffered here and then sent again by onConnectionConnected.
+        if (((request->connectionType & ConnectionTypeGeneric) || getDownloadSize(request) != 0) && connection->getConnectionToken() == 0) {
             iter++;
             continue;
         }
@@ -2852,6 +2880,15 @@ void ConnectionsManager::processRequestQueue(uint32_t connectionTypes, uint32_t 
                         DEBUG_D("skip queue, token = %d: download type: network unavailable", request->requestToken);
                     continue;
                 }
+                uint32_t bytes = getDownloadSize(request);
+                if (bytes != 0) {
+                    if (!downloadBudget.acquire(datacenterId, (request->requestFlags & RequestFlagSmallDownload) != 0, bytes)) {
+                        iter++;
+                        continue;
+                    }
+                    break;
+                }
+                // Non-opted-in requests retain the original count-based scheduling.
                 int max;
                 if (request->isCancelRequest()) {
                     max = MAX_DOWNLOAD_REQUESTS_CANCELS;
@@ -3927,6 +3964,56 @@ void ConnectionsManager::checkProxyInternal(ProxyCheckInfo *proxyCheckInfo) {
             proxyCheckQueue.push_back(std::unique_ptr<ProxyCheckInfo>(proxyCheckInfo));
         }
     }
+}
+
+void ConnectionsManager::importAuthKey(uint32_t dcId, const uint8_t *keyBytes) {
+    scheduleTask([this, dcId, keyBytes]() {
+        Datacenter *datacenter = getDatacenterWithId(dcId);
+        if (datacenter == nullptr) {
+            DEBUG_E("datacenter %u not found", dcId);
+            return;
+        }
+
+        uint8_t sha1Buffer[SHA_DIGEST_LENGTH];
+        SHA1(keyBytes, 256, sha1Buffer);
+        int64_t newAuthKeyId = *(int64_t *)(sha1Buffer + 12);
+
+        if (datacenter->authKeyPerm != nullptr) {
+            delete datacenter->authKeyPerm;
+            datacenter->authKeyPerm = nullptr;
+        }
+
+        datacenter->authKeyPerm = new ByteArray((uint8_t *) keyBytes, 256);
+        datacenter->authKeyPermId = newAuthKeyId;
+
+        if (datacenter->authKeyTemp != nullptr) {
+            delete datacenter->authKeyTemp;
+            datacenter->authKeyTemp = nullptr;
+            datacenter->authKeyTempId = 0;
+        }
+
+        currentDatacenterId = dcId;
+        movingToDatacenterId = DEFAULT_DATACENTER_ID;
+
+        datacenter->recreateSessions(HandshakeTypeAll);
+
+        saveConfig();
+
+        DEBUG_D("successfully imported authKey for DC %u (authKeyId=%lld)", dcId, (long long)newAuthKeyId);
+    });
+}
+
+ByteArray *ConnectionsManager::exportAuthKey(uint32_t dcId) {
+    if (dcId == 0) {
+        dcId = currentDatacenterId;
+    }
+
+    Datacenter *datacenter = getDatacenterWithId(dcId);
+    if (datacenter == nullptr || datacenter->authKeyPerm == nullptr) {
+        return nullptr;
+    }
+
+    return new ByteArray(datacenter->authKeyPerm);
 }
 
 #ifdef ANDROID

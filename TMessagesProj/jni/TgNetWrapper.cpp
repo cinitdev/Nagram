@@ -100,6 +100,9 @@ jlong getCurrentAuthKeyId(JNIEnv *env, jclass c, jint instanceNum) {
 }
 
 jint isTestBackend(JNIEnv *env, jclass c, jint instanceNum) {
+    if (instanceNum < 0) {
+        return 0;
+    }
     return ConnectionsManager::getInstance(instanceNum).isTestBackend() ? 1 : 0;
 }
 
@@ -107,9 +110,10 @@ jint getTimeDifference(JNIEnv *env, jclass c, jint instanceNum) {
     return ConnectionsManager::getInstance(instanceNum).getTimeDifference();
 }
 
-void sendRequest(JNIEnv *env, jclass c, jint instanceNum, jlong object, jint flags, jint datacenterId, jint connectionType, jboolean immediate, jint token) {
+void sendRequest(JNIEnv *env, jclass c, jint instanceNum, jlong object, jint flags, jint datacenterId, jint connectionType, jboolean immediate, jint token, jint downloadSize) {
     TL_api_request *request = new TL_api_request();
     request->request = (NativeByteBuffer *) (intptr_t) object;
+    request->downloadSize = downloadSize > 0 ? (uint32_t) downloadSize : 0;
     ConnectionsManager::getInstance(instanceNum).sendRequest(request, ([instanceNum, token](TLObject *response, TL_error *error, int32_t networkType, int64_t responseTime, int64_t msgId, int32_t dcId) {
         TL_api_response *resp = (TL_api_response *) response;
         jlong ptr = 0;
@@ -352,6 +356,35 @@ checkProxy(JNIEnv *env, jclass c, jint instanceNum, jstring address, jint port, 
     return result;
 }
 
+void importAuthKey(JNIEnv *env, jclass c, jint instanceNum, jint dcId, jbyteArray authKeyArray) {
+    if (authKeyArray == nullptr) {
+        return;
+    }
+
+    jsize length = env->GetArrayLength(authKeyArray);
+    if (length != 256) {
+        return;
+    }
+
+    jbyte *bytes = env->GetByteArrayElements(authKeyArray, nullptr);
+    ConnectionsManager::getInstance(instanceNum).importAuthKey((uint32_t) dcId, (const uint8_t *) bytes);
+    env->ReleaseByteArrayElements(authKeyArray, bytes, 0);
+}
+
+jbyteArray exportAuthKey(JNIEnv *env, jclass c, jint instanceNum, jint dcId) {
+    ByteArray *key = ConnectionsManager::getInstance(instanceNum).exportAuthKey((uint32_t) dcId);
+    if (key == nullptr || key->length != 256) {
+        delete key;
+        return nullptr;
+    }
+
+    jbyteArray result = env->NewByteArray(256);
+    env->SetByteArrayRegion(result, 0, 256, (const jbyte *) key->bytes);
+    delete key;
+
+    return result;
+}
+
 class Delegate : public ConnectiosManagerDelegate {
 
     void onUpdate(int32_t instanceNum) {
@@ -583,8 +616,8 @@ void setJava(JNIEnv *env, jclass c, jboolean useJavaByteBuffers) {
 }
 
 void setJava1(JNIEnv *env, jclass c, jint instanceNum) {
-    if (instanceNum >= jniEnv.capacity()) {
-        jniEnv.resize(instanceNum + 10, nullptr);
+    if (instanceNum < 0 || instanceNum >= MAX_ACCOUNT_COUNT) {
+        return;
     }
     ConnectionsManager::getInstance(instanceNum).setDelegate(new Delegate());
 }
@@ -598,7 +631,7 @@ static JNINativeMethod ConnectionsManagerMethods[] = {
         {"native_getCurrentAuthKeyId", "(I)J", (void *) getCurrentAuthKeyId},
         {"native_isTestBackend", "(I)I", (void *) isTestBackend},
         {"native_getTimeDifference", "(I)I", (void *) getTimeDifference},
-        {"native_sendRequest", "(IJIIIZI)V", (void *) sendRequest},
+        {"native_sendRequest", "(IJIIIZII)V", (void *) sendRequest},
         {"native_cancelRequest", "(IIZ)V", (void *) cancelRequest},
         {"native_cleanUp", "(IZ)V", (void *) cleanUp},
         {"native_cancelRequestsForGuid", "(II)V", (void *) cancelRequestsForGuid},
@@ -629,6 +662,8 @@ static JNINativeMethod ConnectionsManagerMethods[] = {
         {"native_receivedIntegrityCheckClassic", "(IILjava/lang/String;Ljava/lang/String;)V", (void *) receivedIntegrityCheckClassic},
         {"native_receivedCaptchaResult", "(I[ILjava/lang/String;)V", (void *) receivedCaptchaResult},
         {"native_isGoodPrime", "([BI)Z", (void *) isGoodPrime},
+        {"native_importAuthKey", "(II[B)V", (void *) importAuthKey},
+        {"native_exportAuthKey", "(II)[B", (void *) exportAuthKey},
 };
 
 

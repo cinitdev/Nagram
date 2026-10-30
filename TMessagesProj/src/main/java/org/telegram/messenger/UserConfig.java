@@ -21,14 +21,18 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 import tw.nekomimi.nekogram.NekoConfig;
+import tw.nekomimi.nekogram.helpers.remote.ExtendedHelper;
 
 public class UserConfig extends BaseController {
 
     public static int selectedAccount;
     public final static int MAX_ACCOUNT_DEFAULT_COUNT = 8;
-    public final static int MAX_ACCOUNT_COUNT = 10;
+    public final static int MAX_ACCOUNT_PREMIUM_COUNT = 10;
+    public final static int MAX_ACCOUNT_COUNT = 128;
 
     private final Object sync = new Object();
     private volatile boolean configLoaded;
@@ -45,6 +49,7 @@ public class UserConfig extends BaseController {
     public TL_account.tmpPassword tmpPassword;
     public int ratingLoadTime;
     public int botRatingLoadTime;
+    public int botGuestRatingLoadTime;
     public int webappRatingLoadTime;
     public boolean contactsReimported;
     public boolean hasValidDialogLoadIds;
@@ -111,6 +116,33 @@ public class UserConfig extends BaseController {
         return count;
     }
 
+    // loginTime doubles as the account display order.
+    public static void sortAccounts(List<Integer> accounts) {
+        Collections.sort(accounts, (o1, o2) -> Integer.compare(getInstance(o1).loginTime, getInstance(o2).loginTime));
+    }
+
+    // Reassigns the loginTime values already held by these accounts to match the new order,
+    // so accounts outside the list keep their relative positions.
+    public static void applyAccountsOrder(List<Integer> accounts) {
+        final int[] times = new int[accounts.size()];
+        for (int i = 0; i < times.length; ++i) {
+            times[i] = getInstance(accounts.get(i)).loginTime;
+        }
+        Arrays.sort(times);
+        for (int i = 1; i < times.length; ++i) {
+            if (times[i] <= times[i - 1]) {
+                times[i] = times[i - 1] + 1;
+            }
+        }
+        for (int i = 0; i < times.length; ++i) {
+            final UserConfig config = getInstance(accounts.get(i));
+            if (config.loginTime != times[i]) {
+                config.loginTime = times[i];
+                config.saveConfig(false);
+            }
+        }
+    }
+
     public UserConfig(int instance) {
         super(instance);
     }
@@ -125,7 +157,28 @@ public class UserConfig extends BaseController {
     }
 
     public static int getMaxAccountCount() {
-        return hasPremiumOnAccounts() ? 5 : 3;
+        return hasPremiumOnAccounts() ? MAX_ACCOUNT_PREMIUM_COUNT : MAX_ACCOUNT_DEFAULT_COUNT;
+    }
+
+    public static int requestAccountSlot() {
+        int availableAccount = -1;
+        for (int a = 0; a < MAX_ACCOUNT_COUNT; a++) {
+            if (!getInstance(a).isClientActivated()) {
+                availableAccount = a;
+                break;
+            }
+        }
+        if (availableAccount < 0) {
+            return -1;
+        }
+
+        if (getActivatedAccountsCount() < getMaxAccountCount()) {
+            return availableAccount;
+        }
+        if (ExtendedHelper.getInstance().hasExtended()) {
+            return availableAccount;
+        }
+        return -1;
     }
 
     public int getNewMessageId() {
@@ -158,6 +211,7 @@ public class UserConfig extends BaseController {
                     editor.putBoolean("unreadDialogsLoaded", unreadDialogsLoaded);
                     editor.putInt("ratingLoadTime", ratingLoadTime);
                     editor.putInt("botRatingLoadTime", botRatingLoadTime);
+                    editor.putInt("botGuestRatingLoadTime", botGuestRatingLoadTime);
                     editor.putInt("webappRatingLoadTime", webappRatingLoadTime);
                     editor.putBoolean("contactsReimported", contactsReimported);
                     editor.putInt("loginTime", loginTime);
@@ -311,6 +365,7 @@ public class UserConfig extends BaseController {
             contactsReimported = preferences.getBoolean("contactsReimported", false);
             ratingLoadTime = preferences.getInt("ratingLoadTime", 0);
             botRatingLoadTime = preferences.getInt("botRatingLoadTime", 0);
+            botGuestRatingLoadTime = preferences.getInt("botGuestRatingLoadTime", 0);
             webappRatingLoadTime = preferences.getInt("webappRatingLoadTime", 0);
             loginTime = preferences.getInt("loginTime", currentAccount);
             syncContacts = preferences.getBoolean("syncContacts", true);
@@ -482,6 +537,7 @@ public class UserConfig extends BaseController {
         migrateOffsetAccess = -1;
         ratingLoadTime = 0;
         botRatingLoadTime = 0;
+        botGuestRatingLoadTime = 0;
         webappRatingLoadTime = 0;
         draftsLoaded = false;
         contactsReimported = true;

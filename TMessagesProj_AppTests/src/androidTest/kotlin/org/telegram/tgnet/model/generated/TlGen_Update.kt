@@ -421,31 +421,6 @@ public sealed class TlGen_Update : TlGen_Object {
     }
   }
 
-  public data class TL_updateMessagePoll(
-    public val poll_id: Long,
-    public val poll: TlGen_Poll?,
-    public val results: TlGen_PollResults,
-  ) : TlGen_Update() {
-    internal val flags: UInt
-      get() {
-        var result = 0U
-        if (poll != null) result = result or 1U
-        return result
-      }
-
-    public override fun serializeToStream(stream: OutputSerializedData) {
-      stream.writeInt32(MAGIC.toInt())
-      stream.writeInt32(flags.toInt())
-      stream.writeInt64(poll_id)
-      poll?.serializeToStream(stream)
-      results.serializeToStream(stream)
-    }
-
-    public companion object {
-      public const val MAGIC: UInt = 0xACA1657BU
-    }
-  }
-
   public data class TL_updateChatDefaultBannedRights(
     public val peer: TlGen_Peer,
     public val default_banned_rights: TlGen_ChatBannedRights,
@@ -1406,25 +1381,6 @@ public sealed class TlGen_Update : TlGen_Object {
     }
   }
 
-  public data class TL_updateMessagePollVote(
-    public val poll_id: Long,
-    public val peer: TlGen_Peer,
-    public val options: List<List<Byte>>,
-    public val qts: Int,
-  ) : TlGen_Update() {
-    public override fun serializeToStream(stream: OutputSerializedData) {
-      stream.writeInt32(MAGIC.toInt())
-      stream.writeInt64(poll_id)
-      peer.serializeToStream(stream)
-      TlGen_Vector.serializeBytes(stream, options)
-      stream.writeInt32(qts)
-    }
-
-    public companion object {
-      public const val MAGIC: UInt = 0x24F40E77U
-    }
-  }
-
   public data class TL_updateStoryID(
     public val id: Int,
     public val random_id: Long,
@@ -2286,6 +2242,372 @@ public sealed class TlGen_Update : TlGen_Object {
 
     public override fun serializeToStream(stream: OutputSerializedData) {
       stream.writeInt32(MAGIC.toInt())
+    }
+  }
+
+  public data class TL_updateChatParticipantRank(
+    public val chat_id: Long,
+    public val user_id: Long,
+    public val rank: String,
+    public val version: Int,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt64(chat_id)
+      stream.writeInt64(user_id)
+      stream.writeString(rank)
+      stream.writeInt32(version)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0xBD8367B9U
+    }
+  }
+
+  public data class TL_updateMessagePoll(
+    public val top_msg_id: Int?,
+    public val poll_id: Long,
+    public val poll: TlGen_Poll?,
+    public val results: TlGen_PollResults,
+    public val multiflags_1: Multiflags_1?,
+  ) : TlGen_Update() {
+    internal val flags: UInt
+      get() {
+        var result = 0U
+        if (poll != null) result = result or 1U
+        if (multiflags_1 != null) result = result or 2U
+        if (top_msg_id != null) result = result or 4U
+        return result
+      }
+
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt32(flags.toInt())
+      multiflags_1?.let { it.peer.serializeToStream(stream) }
+      multiflags_1?.let { stream.writeInt32(it.msg_id) }
+      top_msg_id?.let { stream.writeInt32(it) }
+      stream.writeInt64(poll_id)
+      poll?.serializeToStream(stream)
+      results.serializeToStream(stream)
+    }
+
+    public data class Multiflags_1(
+      public val peer: TlGen_Peer,
+      public val msg_id: Int,
+    )
+
+    public companion object {
+      public const val MAGIC: UInt = 0xD64C522BU
+    }
+  }
+
+  public data class TL_updateMessagePollVote(
+    public val poll_id: Long,
+    public val peer: TlGen_Peer,
+    public val options: List<List<Byte>>,
+    public val positions: List<Int>,
+    public val qts: Int,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt64(poll_id)
+      peer.serializeToStream(stream)
+      TlGen_Vector.serializeBytes(stream, options)
+      TlGen_Vector.serializeInt(stream, positions)
+      stream.writeInt32(qts)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0x7699F014U
+    }
+  }
+
+  public data class TL_updateManagedBot(
+    public val user_id: Long,
+    public val bot_id: Long,
+    public val qts: Int,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt64(user_id)
+      stream.writeInt64(bot_id)
+      stream.writeInt32(qts)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0x4880ED9AU
+    }
+  }
+
+  public data object TL_updateAiComposeTones : TlGen_Update() {
+    public const val MAGIC: UInt = 0x8C0F91FBU
+
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+    }
+  }
+
+  public data class TL_updateJoinChatWebViewDecision(
+    public val peer: TlGen_Peer,
+    public val query_id: Long,
+    public val result: TlGen_JoinChatBotResult,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      peer.serializeToStream(stream)
+      stream.writeInt64(query_id)
+      result.serializeToStream(stream)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0xBDAC7E70U
+    }
+  }
+
+  public data class TL_updateNewBotConnection(
+    public val confirmed: Boolean,
+    public val bot_id: Long,
+    public val multiflags_1: Multiflags_1?,
+  ) : TlGen_Update() {
+    internal val flags: UInt
+      get() {
+        var result = 0U
+        if (confirmed) result = result or 1U
+        if (multiflags_1 != null) result = result or 2U
+        return result
+      }
+
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt32(flags.toInt())
+      stream.writeInt64(bot_id)
+      multiflags_1?.let { stream.writeInt32(it.date) }
+      multiflags_1?.let { stream.writeString(it.device) }
+      multiflags_1?.let { stream.writeString(it.location) }
+    }
+
+    public data class Multiflags_1(
+      public val date: Int,
+      public val device: String,
+      public val location: String,
+    )
+
+    public companion object {
+      public const val MAGIC: UInt = 0xB22083A6U
+    }
+  }
+
+  public data class TL_updateWebBrowserSettings(
+    public val open_external_browser: Boolean,
+    public val display_close_button: Boolean,
+  ) : TlGen_Update() {
+    internal val flags: UInt
+      get() {
+        var result = 0U
+        if (open_external_browser) result = result or 1U
+        if (display_close_button) result = result or 2U
+        return result
+      }
+
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt32(flags.toInt())
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0xC39A2ADEU
+    }
+  }
+
+  public data class TL_updateWebBrowserException(
+    public val delete: Boolean,
+    public val open_external_browser: Boolean?,
+    public val exception: TlGen_WebDomainException,
+  ) : TlGen_Update() {
+    internal val flags: UInt
+      get() {
+        var result = 0U
+        if (open_external_browser != null) result = result or 1U
+        if (delete) result = result or 2U
+        return result
+      }
+
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt32(flags.toInt())
+      open_external_browser?.let { stream.writeBool(it) }
+      exception.serializeToStream(stream)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0x140502D1U
+    }
+  }
+
+  public data class TL_updateNewEphemeralMessage(
+    public val message: TlGen_EphemeralMessage,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      message.serializeToStream(stream)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0x20BCBBA1U
+    }
+  }
+
+  public data class TL_updateDeleteEphemeralMessages(
+    public val peer: TlGen_Peer,
+    public val ids: List<Int>,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      peer.serializeToStream(stream)
+      TlGen_Vector.serializeInt(stream, ids)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0x56DBFCF8U
+    }
+  }
+
+  public data class TL_updateEditEphemeralMessage(
+    public val message: TlGen_EphemeralMessage,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      message.serializeToStream(stream)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0x4BBB8F01U
+    }
+  }
+
+  public data class TL_updateEphemeralBotCallbackQuery(
+    public val query_id: Long,
+    public val user_id: Long,
+    public val peer: TlGen_Peer?,
+    public val msg_id: Int,
+    public val `data`: List<Byte>,
+    public val chat_instance: Long?,
+    public val message: TlGen_EphemeralMessage,
+  ) : TlGen_Update() {
+    internal val flags: UInt
+      get() {
+        var result = 0U
+        if (peer != null) result = result or 1U
+        if (chat_instance != null) result = result or 2U
+        return result
+      }
+
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt32(flags.toInt())
+      stream.writeInt64(query_id)
+      stream.writeInt64(user_id)
+      peer?.serializeToStream(stream)
+      stream.writeInt32(msg_id)
+      stream.writeByteArray(data.toByteArray())
+      chat_instance?.let { stream.writeInt64(it) }
+      message.serializeToStream(stream)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0x7C1079D6U
+    }
+  }
+
+  public data class TL_updateWalletState(
+    public val state: TlGen_WalletState,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      state.serializeToStream(stream)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0x6AC3F2AAU
+    }
+  }
+
+  public data class TL_updateSentWalletTransaction(
+    public val gasless: Boolean,
+    public val msg_hash: String,
+    public val transaction: TlGen_WalletTransaction?,
+  ) : TlGen_Update() {
+    internal val flags: UInt
+      get() {
+        var result = 0U
+        if (gasless) result = result or 1U
+        if (transaction != null) result = result or 2U
+        return result
+      }
+
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt32(flags.toInt())
+      stream.writeString(msg_hash)
+      transaction?.serializeToStream(stream)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0xB1434D4AU
+    }
+  }
+
+  public data class TL_updateWalletGaslessInfo(
+    public val available: Boolean,
+    public val left: Int,
+    public val reset_at: Int,
+    public val min_amount: Long,
+    public val relayer_address: String,
+  ) : TlGen_Update() {
+    internal val flags: UInt
+      get() {
+        var result = 0U
+        if (available) result = result or 1U
+        return result
+      }
+
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt32(flags.toInt())
+      stream.writeInt32(left)
+      stream.writeInt32(reset_at)
+      stream.writeInt64(min_amount)
+      stream.writeString(relayer_address)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0xA8AE1CACU
+    }
+  }
+
+  public data class TL_updateWalletTonConnectSession(
+    public val session: TlGen_TonConnectSession,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      session.serializeToStream(stream)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0x50A38E0EU
+    }
+  }
+
+  public data class TL_updateWalletTonConnectPendingDisconnect(
+    public val session_ids: List<Long>,
+  ) : TlGen_Update() {
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      TlGen_Vector.serializeLong(stream, session_ids)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0xD1EE8199U
     }
   }
 }

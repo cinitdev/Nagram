@@ -58,6 +58,7 @@ import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.util.ArrayList;
 
+import tw.nekomimi.nekogram.NekoConfig;
 import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.TabStyle;
 
@@ -462,6 +463,7 @@ public class ViewPagerFixed extends FrameLayout {
                 parent.removeView(v);
             }
             addView(v);
+            v.setTranslationX(getMeasuredWidth());
             viewPages[index] = v;
             adapter.bindView(viewPages[index], adapterPosition, viewTypes[index]);
             viewPages[index].setVisibility(View.VISIBLE);
@@ -1409,7 +1411,7 @@ public class ViewPagerFixed extends FrameLayout {
 
                 tabWidth = currentTab.titleWidth + (countWidth != 0 ? countWidth + dp(6 * (counterText != null ? 1.0f : editingStartAnimationProgress)) : 0);
                 int textX = (getMeasuredWidth() - tabWidth) / 2;
-                if (currentTab.title == null && currentText != null || !currentTab.title.equals(currentText)) {
+                if (currentTab.title == null && currentText != null || !TextUtils.equals(currentTab.title, currentText)) {
                     currentText = currentTab.title = Emoji.replaceEmoji(currentTab.title, textPaint.getFontMetricsInt(), false);
                     if (this.text != null) {
                         this.text.detach();
@@ -1526,6 +1528,21 @@ public class ViewPagerFixed extends FrameLayout {
         private int selectorColorKey = Theme.key_profile_tabSelector;
         private int backgroundColorKey = Theme.key_actionBarDefault;
 
+        public void setColors(
+            int tabLineColorKey,
+            int activeTextColorKey,
+            int unactiveTextColorKey,
+            int selectorColorKey,
+            int backgroundColorKey
+        ) {
+            this.tabLineColorKey = tabLineColorKey;
+            this.activeTextColorKey = activeTextColorKey;
+            this.unactiveTextColorKey = unactiveTextColorKey;
+            this.selectorColorKey = selectorColorKey;
+            this.backgroundColorKey = backgroundColorKey;
+            selectorDrawable.setColor(Theme.getColor(tabLineColorKey, resourcesProvider));
+        }
+
         private int prevLayoutWidth;
 
         private boolean invalidated;
@@ -1589,7 +1606,7 @@ public class ViewPagerFixed extends FrameLayout {
             this.selectorType = tabsSelectorType;
             textCounterPaint.setTextSize(dp(13));
             textCounterPaint.setTypeface(AndroidUtilities.bold());
-            textPaint.setTextSize(dp(tabsSelectorType == 9 || tabsSelectorType == SELECTOR_TYPE_BUBBLE_STYLE ? 14 : 15));
+            textPaint.setTextSize(dp(tabsSelectorType == 9 || tabsSelectorType == 10 || tabsSelectorType == SELECTOR_TYPE_BUBBLE_STYLE ? 14 : 15));
             textPaint.setTypeface(AndroidUtilities.bold());
             deletePaint.setStyle(Paint.Style.STROKE);
             deletePaint.setStrokeCap(Paint.Cap.ROUND);
@@ -1651,7 +1668,7 @@ public class ViewPagerFixed extends FrameLayout {
                 listView.setSelectorType(9);
                 listView.setSelectorRadius(6);
             } else {
-                listView.setSelectorType(tabsSelectorType);
+                listView.setSelectorType(tabsSelectorType == 10 ? 9 : tabsSelectorType);
                 if (tabsSelectorType == 3) {
                     listView.setSelectorRadius(0);
                 } else {
@@ -1725,7 +1742,7 @@ public class ViewPagerFixed extends FrameLayout {
                     invalidate();
                 }
             });
-            if (tabsSelectorType == 9) {
+            if (tabsSelectorType == 9 || tabsSelectorType == 10) {
                 addView(listView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER_HORIZONTAL));
             } else {
                 addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
@@ -2020,7 +2037,7 @@ public class ViewPagerFixed extends FrameLayout {
                 }
                 indicatorX += listView.getX();
                 if (indicatorWidth != 0) {
-                    if (selectorType == 9) {
+                    if (selectorType == 9 || selectorType == 10) {
                         selectorPaint.setColor(Theme.multAlpha(textPaint.getColor(), .15f));
                         final float cy = height / 2f, h = dp(26);
                         AndroidUtilities.rectTmp.set(indicatorX - dp(12), cy - h / 2f, indicatorX + indicatorWidth + dp(12), cy + h / 2f);
@@ -2036,11 +2053,18 @@ public class ViewPagerFixed extends FrameLayout {
                             final float TAB_INTERNAL_PADDING = 12.5f;
                             final float add = additionalTabWidth / 2f;
                             final int y = height / 2 - dp(14);
+                            if (NaConfig.INSTANCE.getTabStyleStroke().Bool()) {
+                                selectorDrawable.setStroke(AndroidUtilities.dp(1), Theme.getColor(activeTextColorKey, resourcesProvider));
+                                selectorDrawable.setColor(ColorUtils.setAlphaComponent(Theme.getColor(tabLineColorKey, resourcesProvider), 50));
+                            } else {
+                                selectorDrawable.setStroke(0, 0);
+                                selectorDrawable.setColor(Theme.getColor(tabLineColorKey, resourcesProvider));
+                            }
                             selectorDrawable.setBounds(
                                 (int) (indicatorX - dp(TAB_INTERNAL_PADDING) - add), y,
                                 (int) (indicatorX + indicatorWidth + dp(TAB_INTERNAL_PADDING) + add),
                                 y + dp(28));
-                            selectorDrawable.setAlpha(31);
+                            selectorDrawable.setAlpha(NaConfig.INSTANCE.getTabStyleStroke().Bool() ? 255 : 31);
                             selectorDrawable.draw(canvas);
                         } else {
                             selectorDrawable.setBounds(indicatorX, (int) (height - AndroidUtilities.dpr(4) + hideProgress * AndroidUtilities.dpr(4)), indicatorX + indicatorWidth, (int) (height + hideProgress * AndroidUtilities.dpr(4)));
@@ -2058,7 +2082,7 @@ public class ViewPagerFixed extends FrameLayout {
             if (!tabs.isEmpty()) {
                 int width = MeasureSpec.getSize(widthMeasureSpec) - dp(7) - dp(7);
                 int prevWidth = additionalTabWidth;
-                if (tabs.size() == 1 || selectorType == 9) {
+                if (tabs.size() == 1 || selectorType == 9 || selectorType == 10) {
                     additionalTabWidth = 0;
                 } else {
                     additionalTabWidth = allTabsWidth < width ? (width - allTabsWidth) / tabs.size() : 0;

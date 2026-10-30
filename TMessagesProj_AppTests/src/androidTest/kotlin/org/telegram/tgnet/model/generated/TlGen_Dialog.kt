@@ -2,6 +2,7 @@ package org.telegram.tgnet.model.generated
 
 import kotlin.Boolean
 import kotlin.Int
+import kotlin.Long
 import kotlin.UInt
 import org.telegram.tgnet.OutputSerializedData
 import org.telegram.tgnet.model.TlGen_Object
@@ -53,6 +54,7 @@ public sealed class TlGen_Dialog : TlGen_Object {
     public val unread_count: Int,
     public val unread_mentions_count: Int,
     public val unread_reactions_count: Int,
+    public val unread_poll_votes_count: Int,
     public val notify_settings: TlGen_PeerNotifySettings,
     public val pts: Int?,
     public val draft: TlGen_DraftMessage?,
@@ -82,6 +84,7 @@ public sealed class TlGen_Dialog : TlGen_Object {
       stream.writeInt32(unread_count)
       stream.writeInt32(unread_mentions_count)
       stream.writeInt32(unread_reactions_count)
+      stream.writeInt32(unread_poll_votes_count)
       notify_settings.serializeToStream(stream)
       pts?.let { stream.writeInt32(it) }
       draft?.serializeToStream(stream)
@@ -90,7 +93,31 @@ public sealed class TlGen_Dialog : TlGen_Object {
     }
 
     public companion object {
-      public const val MAGIC: UInt = 0xD58A08C6U
+      public const val MAGIC: UInt = 0xFC89F7F3U
+    }
+  }
+
+  public data class TL_dialogCommunity(
+    public val pinned: Boolean,
+    public val community_id: Long,
+    public val notify_settings: TlGen_PeerNotifySettings,
+  ) : TlGen_Dialog() {
+    internal val flags: UInt
+      get() {
+        var result = 0U
+        if (pinned) result = result or 4U
+        return result
+      }
+
+    public override fun serializeToStream(stream: OutputSerializedData) {
+      stream.writeInt32(MAGIC.toInt())
+      stream.writeInt32(flags.toInt())
+      stream.writeInt64(community_id)
+      notify_settings.serializeToStream(stream)
+    }
+
+    public companion object {
+      public const val MAGIC: UInt = 0xF78A0973U
     }
   }
 }

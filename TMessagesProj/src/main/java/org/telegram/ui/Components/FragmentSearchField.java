@@ -1,7 +1,6 @@
 package org.telegram.ui.Components;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
-import static org.telegram.messenger.AndroidUtilities.lerp;
 
 import android.animation.Animator;
 import android.animation.AnimatorSet;
@@ -10,7 +9,6 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.PorterDuff;
-import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.Editable;
@@ -31,6 +29,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 
@@ -41,6 +40,7 @@ import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Adapters.FiltersView;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 
 import java.util.ArrayList;
 
@@ -65,6 +65,7 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
     private final LinearLayout additionalIconsLayout;
     private boolean closeButtonForcedVisible;
     public final EditTextBoldCursor editText;
+    private BlurredBackgroundDrawable blurredBackgroundDrawable;
 
     public FragmentSearchField(Context context, Theme.ResourcesProvider resourcesProvider) {
         super(context);
@@ -95,26 +96,20 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         };
         editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
         editText.setCursorWidth(1.5f);
-        editText.setInputType(InputType.TYPE_TEXT_VARIATION_FILTER | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        editText.setInputType(editText.getInputType() | InputType.TYPE_TEXT_VARIATION_FILTER);
         editText.setSingleLine(true);
         editText.setBackground(null);
         editText.setVerticalScrollBarEnabled(false);
         editText.setHorizontalScrollBarEnabled(false);
         editText.setPadding(dp(48), 0, dp(48), 0);
         editText.setClipToPadding(true);
-        editText.setImeOptions(EditorInfo.IME_ACTION_DONE | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        editText.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         editText.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
         editText.addTextChangedListener(new TextWatcher() {
             @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-
-            }
-
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-
-            }
-
+            public void onTextChanged(CharSequence s, int start, int before, int count) {}
             @Override
             public void afterTextChanged(Editable s) {
                 if (!currentSearchFilters.isEmpty()) {
@@ -179,24 +174,12 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         updateColors();
     }
 
-    public void addAdditionalIcon(View icon) {
-        additionalIconsLayout.addView(icon);
+    public void setHintText(CharSequence text, boolean animated) {
+        editText.setHintText(text, animated);
     }
 
-    private float clipHeight = 1.0f;
-    public void setClipHeight(float sy) {
-        if (Math.abs(clipHeight - sy) < 0.01f)
-            return;
-        clipHeight = sy;
-        invalidate();
-
-        final float scale = lerp(0.75f, 1.0f, clipHeight);
-        editText.setScaleX(scale);
-        editText.setScaleY(scale);
-        searchIcon.setScaleX(scale);
-        searchIcon.setScaleY(scale);
-        closeIcon.setScaleX(scale);
-        closeIcon.setScaleY(scale);
+    public void addAdditionalIcon(View icon) {
+        additionalIconsLayout.addView(icon);
     }
 
     private Drawable bg;
@@ -205,15 +188,50 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
     protected void dispatchDraw(@NonNull Canvas canvas) {
         canvas.save();
         if (bg != null) {
-            bg.setBounds(getPaddingLeft(), getPaddingTop(), getWidth() - getPaddingRight(), (int) ((getHeight() - getPaddingBottom()) * clipHeight));
+            bg.setBounds(
+                getPaddingLeft(),
+                getPaddingTop(),
+                getWidth() - getPaddingRight(),
+                getHeight() - getPaddingBottom()
+            );
             bg.draw(canvas);
         }
-        if (clipHeight < 1) {
-            canvas.clipRect(0, 0, getWidth(), getHeight() * clipHeight);
-            canvas.translate(0, -getHeight() * (1.0f - clipHeight) / 2.0f);
+        if (blurredBackgroundDrawable != null) {
+            blurredBackgroundDrawable.setBounds(
+                    getPaddingLeft() - dp(4),
+                    getPaddingTop() - dp(4),
+                    getWidth() - getPaddingRight() + dp(4),
+                    (getHeight() - getPaddingBottom()) + dp(4));
+            blurredBackgroundDrawable.draw(canvas);
         }
         super.dispatchDraw(canvas);
         canvas.restore();
+    }
+
+    public void setupBlurredBackground(BlurredBackgroundDrawable drawable) {
+        drawable.setRadius(dp(20));
+        drawable.setPadding(dp(4));
+        blurredBackgroundDrawable = drawable;
+    }
+
+    public void setBlurredBackgroundVisibility(float visibility) {
+        final int alpha = (int) (255 * visibility);
+        boolean changed = false;
+        if (blurredBackgroundDrawable != null) {
+            if (blurredBackgroundDrawable.getAlpha() != alpha) {
+                blurredBackgroundDrawable.setAlpha(alpha);
+                changed = true;
+            }
+        }
+        if (bg != null) {
+            if (bg.getAlpha() != (255 - alpha)) {
+                bg.setAlpha(255 - alpha);
+                changed = true;
+            }
+        }
+        if (changed) {
+            invalidate();
+        }
     }
 
     @Override
@@ -246,18 +264,28 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
         updateColors();
     }
 
+    private boolean isWhiteBackground;
+
+    public void setWhiteBackground() {
+        isWhiteBackground = true;
+        updateColors();
+    }
+
     @Override
     public void updateColors() {
         final boolean isDark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
         bg = isSectionBackground ?
             Theme.createRoundRectDrawableShadowed(dp(20), getThemedColor(Theme.key_windowBackgroundWhite)) :
-            Theme.createRoundRectDrawable(dp(20), getThemedColor(Theme.key_windowBackgroundWhiteBlackText, isDark ? 0.07f : 0.05f));
+            Theme.createRoundRectDrawable(dp(20), isWhiteBackground ? getThemedColor(Theme.key_windowBackgroundWhite) : getThemedColor(Theme.key_windowBackgroundWhiteBlackText, isDark ? 0.07f : 0.05f));
         searchIcon.setColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteBlackText, 0.6f), PorterDuff.Mode.MULTIPLY);
         closeIcon.setColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteBlackText, 0.6f), PorterDuff.Mode.MULTIPLY);
         closeIcon.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), 1, dp(17)));
         editText.setHintTextColor(getThemedColor(Theme.key_windowBackgroundWhiteBlackText, 0.5f));
         editText.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteBlackText));
         editText.setCursorColor(getThemedColor(Theme.key_groupcreate_cursor));
+        if (blurredBackgroundDrawable != null) {
+            blurredBackgroundDrawable.updateColors();
+        }
 
         for (int i = 0, N = additionalIconsLayout.getChildCount(); i < N; i++) {
             final View view = additionalIconsLayout.getChildAt(i);
@@ -473,11 +501,12 @@ public class FragmentSearchField extends FrameLayout implements FactorAnimator.T
             FiltersView.MediaFilterData filter = localFilters.get(i);
             ActionBarMenuItem.SearchFilterView searchFilterView;
             if (filter.reaction != null) {
-                searchFilterView = new ActionBarMenuItem.ReactionFilterView(getContext(), resourcesProvider, true);
+                searchFilterView = new ActionBarMenuItem.ReactionFilterView(getContext(), resourcesProvider, false);
             } else {
-                searchFilterView = new ActionBarMenuItem.SearchFilterView(getContext(), resourcesProvider, true);
+                searchFilterView = new ActionBarMenuItem.SearchFilterView(getContext(), resourcesProvider, false);
             }
 
+            searchFilterView.setGlass();
             searchFilterView.setData(filter);
             searchFilterView.setOnClickListener(view -> {
                 int index = currentSearchFilters.indexOf(searchFilterView.getFilter());

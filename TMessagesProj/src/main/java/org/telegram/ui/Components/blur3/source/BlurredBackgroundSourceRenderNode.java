@@ -28,6 +28,7 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
     private DownscaleScrollableNoiseSuppressor scrollableNoiseSuppressor;
     private int scrollableNoiseSuppressorIndex;
     public BlurredBackgroundSource underSource;
+    private boolean noClip;
 
     public BlurredBackgroundSourceRenderNode(BlurredBackgroundSource fallbackSource) {
         this.fallbackSource = fallbackSource;
@@ -61,6 +62,17 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
     @RequiresApi(api = Build.VERSION_CODES.S)
     public void setBlur(float radius) {
         renderNode.setRenderEffect(radius > 0 ? RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP) : null);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.S)
+    public void setBlur(float radius, RenderEffect effect) {
+        renderNode.setRenderEffect(RenderEffect.createChainEffect(RenderEffect.createBlurEffect(radius, radius, Shader.TileMode.CLAMP), effect));
+    }
+
+
+
+    public void noClip() {
+        this.noClip = true;
     }
 
     private boolean inRecording;
@@ -113,10 +125,12 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
             throw new IllegalStateException();
         }
 
-        canvas.save();
-        canvas.clipRect(left, top, right, bottom);
         if (underSource != null) {
             underSource.draw(canvas, left, top, right, bottom);
+        }
+        canvas.save();
+        if (!noClip) {
+            canvas.clipRect(left, top, right, bottom);
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && scrollableNoiseSuppressor != null) {
             scrollableNoiseSuppressor.drawInline(canvas, scrollableNoiseSuppressorIndex);
@@ -161,6 +175,7 @@ public class BlurredBackgroundSourceRenderNode implements BlurredBackgroundSourc
         onDrawablesRelativePositionChangeListener = callback;
     }
 
+    @Override
     public void dispatchOnDrawablesRelativePositionChange() {
         if (onDrawablesRelativePositionChangeListener != null) {
             onDrawablesRelativePositionChangeListener.run();

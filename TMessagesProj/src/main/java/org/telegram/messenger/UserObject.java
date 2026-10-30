@@ -26,6 +26,8 @@ public class UserObject {
     public static final long ANONYMOUS = 2666000L;
     public static final long VERIFY = 489000L;
 
+    public static final long OAUTH = 489001L;
+
     public static boolean isDeleted(TLRPC.User user) {
         return user == null || user instanceof TLRPC.TL_userDeleted_old2 || user instanceof TLRPC.TL_userEmpty || user.deleted;
     }
@@ -159,9 +161,6 @@ public class UserObject {
 
     public static Long getEmojiStatusDocumentId(TLRPC.EmojiStatus emojiStatus) {
         if (emojiStatus == null) {
-            return null;
-        }
-        if (MessagesController.getInstance(UserConfig.selectedAccount).premiumFeaturesBlocked()) {
             return null;
         }
         if (emojiStatus instanceof TLRPC.TL_emojiStatus) {
@@ -369,8 +368,18 @@ public class UserObject {
         );
     }
 
+    public static boolean isBotForum(int currentAccount, long userId) {
+        TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(userId);
+        return isBotForum(user);
+    }
+
     public static boolean isBotForum(TLRPC.User user) {
         return user != null && user.bot_forum_view;
+    }
+
+    public static boolean isBotForumWithEditableTopics(int currentAccount, long userId) {
+        TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(userId);
+        return isBotForumWithEditableTopics(user);
     }
 
     public static boolean isBotForumWithEditableTopics(TLRPC.User user) {
